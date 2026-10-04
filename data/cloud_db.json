@@ -1,37 +1,6 @@
 {
-  "users": [
-    {
-      "id": 1207936155,
-      "username": "Airoq77",
-      "full_name": "poriA Eazi",
-      "created_at": "2026-10-04 07:37:10",
-      "card_number": null,
-      "bank_name": null,
-      "is_active": 1,
-      "calling_name": "پوریا"
-    }
-  ],
-  "groups": [
-    {
-      "id": 4,
-      "invite_code": "332a60b8",
-      "title": "باشگاه لاشی‌های بی‌ادعا 🐺",
-      "created_by": 1207936155,
-      "created_at": "2026-10-04 07:37:31",
-      "tone": "friendly"
-    }
-  ],
-  "group_members": [
-    {
-      "id": 4,
-      "group_id": 4,
-      "user_id": 1207936155,
-      "nickname": "شیطان لاپا 😈",
-      "joined_at": "2026-10-04 07:37:31"
-    }
-  ],
-  "expenses": [],
-  "expense_shares": [],
-  "daily_quotes_log": [],
-  "user_cards": []
+  "version": 2,
+  "encrypted": true,
+  "cipher": "fernet-aes-256",
+  "data": "gAAAAABqwjDcai_iLNFpggizUgmGa6rTNsC8aU2Yg1jPeRmXZnbvLEdAyZRyyMDArMRE1pXABRZhb1SYxwToPuTBHqgsHjIgYZvfZs_eRni54cT1c1aFhq7mY6qLyr1ue2CoqioftzZMdoQiftQpx9p5fhUA80oSf_BOrhbNw689HsMFnm6Kvt-dSYl6T_wZfwUmy6RdbblfuttLgQ9SQQQzyAtrU2WaEwvVFvXE2pyYa6G-LtmJGlY1_NRiTDLc1S9zSd4faqNUHMYFbjkzTTxIj4RUBSrcz3amq4hV1Pad5klqcYGwQafH327dRhquSVngXoYDNKCXSwP0_RgEtV3cZNYV7hXH3E1i059FxXFVWyNPmCKXQ-9Xc6mJZNiNJLAnnNlDt0c5j9MFw2MkEHC0c2-x4lT_TkWk1I1TPiwLfY95hNRZvTXPnMafRnmpoM23eJHPYrXmKEQwZiHw1gKr09fPQ8mj_L1jsqyBxJBcpuzzFbT-sKRSUdzp2SNuQpD_cB2t2hADnkGvR22PcVRmdgmVbOPaDJe8LKelM7wkY2eHLeWTfDov97-X0ZiQmXe5ixZl55uOnoYLBO64mph_ay_gF0yqSSlL_dmRYc8wV3Nko5dJqlftbEMnKl9F8iOd8YlsK5Z3qqQ8fLqeLx1SwczmDuxgoCtXRKU4S3WhHM9fNgjlqFuwf6gGwQ0bQy5KlN8uW1JZ37QYwJSAZPnV_FcD4XrqrGde0Jilzh_8bM4ZujXomS9XdTkhWgFzKs-tCr4wbTF_70R-BPqEdYDGdJI48VK-OtcvZvgjl4sQ0aYYO30m5HOaosvlGwfsLCmbMjjQdO6aPRHr4Pkr8Mx5Ym92XjnbouGHncSK6pH8AgOsfSszW5ZZ0fo-0LECOFKH6eEOP39IXf_l9C1W0u8siiATtRcxUA=="
 }
