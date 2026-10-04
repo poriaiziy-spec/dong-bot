@@ -49,6 +49,7 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="groups", description="👥 گروه‌های من"),
         BotCommand(command="newgroup", description="➕ ساخت گروه دنگ جدید"),
         BotCommand(command="help", description="💡 راهنمای کار با ربات"),
+        BotCommand(command="reset_all_data", description="🧹 ریست و پاکسازی کامل دیتابیس"),
     ]
     await bot.set_my_commands(commands)
 

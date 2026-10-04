@@ -349,3 +349,18 @@ async def get_group_tone(group_id: int) -> str:
                 return row["tone"]
             return "friendly"
 
+
+async def reset_all_database():
+    """پاکسازی کامل و ریست تمام اطلاعات دیتابیس (جداول، گروه‌ها، اعضا و هزینه‌ها)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA foreign_keys = OFF;")
+        await db.execute("DELETE FROM expense_shares;")
+        await db.execute("DELETE FROM expenses;")
+        await db.execute("DELETE FROM group_members;")
+        await db.execute("DELETE FROM groups;")
+        await db.execute("DELETE FROM users;")
+        await db.execute("PRAGMA foreign_keys = ON;")
+        await db.execute("VACUUM;")
+        await db.commit()
+
+

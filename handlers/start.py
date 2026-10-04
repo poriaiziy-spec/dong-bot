@@ -110,3 +110,32 @@ async def handle_nav_main(callback: CallbackQuery, state: FSMContext):
         parse_mode="HTML",
         reply_markup=kb.main_menu_keyboard()
     )
+
+
+@router.message(Command("reset", "reset_all_data"))
+async def handle_reset_prompt(message: Message, state: FSMContext):
+    await state.clear()
+    text = (
+        "⚠️ <b>هشدار پاکسازی و ریست کامل اطلاعات:</b>\n\n"
+        "آیا مطمئن هستید که می‌خواهید <b>تمام داده‌های ربات</b> را پاک کنید؟\n"
+        "• تمام گروه‌ها، اعضا، دنگ‌ها، هزینه‌ها و شماره کارت‌ها کاملاً پاک خواهند شد و ربات از صفر شروع به کار می‌کند."
+    )
+    markup = kb.InlineKeyboardMarkup(inline_keyboard=[
+        [kb.InlineKeyboardButton(text="🔥 بله، تمام داده‌ها پاک شوند", callback_data="admin:reset:confirm")],
+        [kb.InlineKeyboardButton(text="❌ انصراف", callback_data="nav:main")]
+    ])
+    await message.answer(text, parse_mode="HTML", reply_markup=markup)
+
+
+@router.callback_query(F.data == "admin:reset:confirm")
+async def handle_reset_execute(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await db.reset_all_database()
+    await callback.answer("✅ تمام داده‌های ربات پاک شدند!", show_alert=True)
+    
+    text = (
+        "🧹 <b>تمام داده‌های ربات با موفقیت پاکسازی و صفر شدند!</b>\n\n"
+        "ربات به حالت اولیه و صفر بازگشت."
+    )
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.main_menu_keyboard())
+
