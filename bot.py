@@ -142,8 +142,8 @@ async def start_keep_alive_task():
         except Exception as e:
             logger.debug(f"Keep-alive ping notice: {e}")
         
-        # هر ۴ دقیقه (۲۴۰ ثانیه) پینگ ارسال می‌شود تا از سقف ۱۵ دقیقه رندر خیلی فاصله داشته باشیم
-        await asyncio.sleep(240)
+        # ارسال پینگ هر ۲۵ ثانیه برای زنده نگه‌داشتن دائمی سرور
+        await asyncio.sleep(25)
 
 async def set_bot_commands(bot: Bot):
     """تنظیم منوی دستورات ربات در تلگرام"""
