@@ -110,11 +110,11 @@ async def finish_group_creation(msg_target: Message, user, title: str, state: FS
     invite_link = f"https://t.me/{bot_info.username}?start=join_{invite_code}"
 
     text = (
-        f"✅ گروه <b>«{safe(title)}»</b> با موفقیت ساخته شد!\n"
+        f"🎉 دورهمی <b>«{safe(title)}»</b> با موفقیت در <b>کافه دنگ</b> ایجاد شد!\n"
         f"👑 لقب شما در این گروه: <b>«{safe(creator_nick)}»</b>\n\n"
-        f"🔗 <b>لینک دعوت اختصاصی گروه:</b>\n"
-        f"<code>{invite_link}</code>\n\n"
-        "این لینک را برای دوستانتان بفرستید تا با یک کلیک و با لقب‌های خنده‌دار رندوم به گروه ملحق شوند!"
+        "💌 <b>کارت دعوت ورود اعضا:</b>\n"
+        f"👉 <a href=\"{invite_link}\"><b>[ ☕ برای ورود و عضویت در گروه لمس کنید ]</b></a>\n\n"
+        "💡 <i>از داخل منوی گروه، دکمه «💌 کارت دعوت اعضا» را بزنید تا کارت شیک و آماده فوروارد برای دوستانتان تولید شود!</i>"
     )
     if hasattr(msg_target, "edit_text") and msg_target.from_user.is_bot:
         await msg_target.edit_text(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group_id, is_creator=True))
@@ -376,17 +376,56 @@ async def handle_group_invite(callback: CallbackQuery, bot: Bot):
     invite_link = f"https://t.me/{bot_info.username}?start=join_{group['invite_code']}"
 
     text = (
-        f"🔗 <b>لینک دعوت به گروه «{safe(group['title'])}»:</b>\n\n"
-        f"<code>{invite_link}</code>\n\n"
-        "💡 <i>کافی است این لینک را برای دوستانتان بفرستید. به محض اینکه استارت را بزنند، به عضویت گروه در می‌آیند.</i>"
+        f"💌 <b>کارت دعوت اختصاصی کافه دنگ</b> ☕\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"سلام رفقا! ✨\n"
+        f"شما به جمع دورهمی <b>«{safe(group['title'])}»</b> دعوت شدید.\n\n"
+        "قراره از این به بعد تمام حساب‌کتاب‌ها، خرج‌ها و دنگ‌های مشترکمون رو در کافه دنگ دقیق و بدون دردسر مدیریت کنیم!\n\n"
+        "👇 <b>برای ورود به جمع، دکمه یا لینک زیر را لمس کنید:</b>\n"
+        f"👉 <a href=\"{invite_link}\"><b>[ ☕ ورود و عضویت در دورهمی «{safe(group['title'])}» ]</b></a>\n"
+        "━━━━━━━━━━━━━━━━━━━━"
     )
     is_creator = (group["created_by"] == callback.from_user.id)
-    buttons = []
+    buttons = [
+        [InlineKeyboardButton(text=f"☕ ورود مستقیم به «{group['title']}»", url=invite_link)],
+        [InlineKeyboardButton(text="📤 دریافت کارت دعوت آماده فوروارد", callback_data=f"grp:invite_forward:{group_id}")]
+    ]
     if is_creator:
         buttons.append([InlineKeyboardButton(text="🔄 باطل کردن و ساخت لینک جدید", callback_data=f"grp:invite_regen:{group_id}")])
     buttons.append([InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")])
 
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+
+
+@router.callback_query(F.data.startswith("grp:invite_forward:"))
+async def handle_group_invite_forward(callback: CallbackQuery, bot: Bot):
+    await callback.answer()
+    group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        return
+        
+    bot_info = await bot.get_me()
+    invite_link = f"https://t.me/{bot_info.username}?start=join_{group['invite_code']}"
+    
+    card_text = (
+        f"💌 <b>دعوت‌نامه ورود به دورهمی «{safe(group['title'])}»</b> ☕\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "سلام رفیق! ✨\n"
+        f"به جمع دورهمی ما در <b>کافه دنگ</b> دعوت شدی.\n\n"
+        "با پیوستن به این دورهمی، تمام هزینه‌ها و دنگ‌های مشترک به صورت خودکار، دقیق و عادلانه حساب و تسویه میشه.\n\n"
+        "👇 <b>جهت عضویت در گروه، روی لینک یا دکمه زیر بزن:</b>\n"
+        f"👉 <a href=\"{invite_link}\"><b>[ ☕ ورود به گروه «{safe(group['title'])}» ]</b></a>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "☕ <i>کافه دنگ | مدیریت هوشمند دنگ و دورهمی</i>"
+    )
+    
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"☕ پیوستن به گروه «{group['title']}»", url=invite_link)]
+    ])
+    
+    await callback.message.answer(card_text, parse_mode="HTML", reply_markup=markup)
+    await callback.answer("✅ کارت دعوت با موفقیت تولید و ارسال شد! آن را برای دوستانتان فوروارد کنید.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("grp:invite_regen:"))
@@ -402,16 +441,23 @@ async def handle_group_invite_regen(callback: CallbackQuery, bot: Bot):
         await callback.answer("خطا در ایجاد لینک جدید!", show_alert=True)
         return
 
-    await callback.answer("✅ لینک قبلی باطل و لینک جدید ساخته شد!", show_alert=True)
+    await callback.answer("✅ لینک قبلی باطل و کارت دعوت جدید صادر شد!", show_alert=True)
     bot_info = await bot.get_me()
     invite_link = f"https://t.me/{bot_info.username}?start=join_{new_code}"
 
     text = (
-        f"🔗 <b>لینک دعوت جدید گروه «{safe(group['title'])}»:</b>\n\n"
-        f"<code>{invite_link}</code>\n\n"
-        "⚠️ <i>لینک قبلی باطل شد و دیگر کسی با لینک قدیمی نمی‌تواند عضو شود.</i>"
+        f"💌 <b>کارت دعوت جدید کافه دنگ</b> ☕\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"سلام رفقا! ✨\n"
+        f"شما به جمع دورهمی <b>«{safe(group['title'])}»</b> دعوت شدید.\n\n"
+        "⚠️ <i>لینک قبلی باطل شد و کارت جدید جایگزین گردید.</i>\n\n"
+        "👇 <b>برای ورود به جمع، دکمه یا لینک زیر را لمس کنید:</b>\n"
+        f"👉 <a href=\"{invite_link}\"><b>[ ☕ ورود و عضویت در دورهمی «{safe(group['title'])}» ]</b></a>\n"
+        "━━━━━━━━━━━━━━━━━━━━"
     )
     buttons = [
+        [InlineKeyboardButton(text=f"☕ ورود مستقیم به «{group['title']}»", url=invite_link)],
+        [InlineKeyboardButton(text="📤 دریافت کارت دعوت آماده فوروارد", callback_data=f"grp:invite_forward:{group_id}")],
         [InlineKeyboardButton(text="🔄 ساخت مجدد لینک جدید", callback_data=f"grp:invite_regen:{group_id}")],
         [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
     ]

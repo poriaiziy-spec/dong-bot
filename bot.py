@@ -101,13 +101,16 @@ async def main():
     main_router = setup_routers()
     dp.include_router(main_router)
 
-    # تنظیم دکمه‌های منو
+    # تنظیم دکمه‌های منو و نام و مشخصات ربات
     try:
         await set_bot_commands(bot)
+        await bot.set_my_name(name="کافه دنگ ☕")
+        await bot.set_my_description(description="☕ به کافه دنگ خوش آمدید!\nمدیریت هوشمند دنگ‌ها، تسهیم دقیق هزینه‌ها، یادآوری واریز و دورهمی رفقا.")
+        await bot.set_my_short_description(short_description="کافه دنگ ☕ | مدیریت هوشمند دنگ و هزینه‌های مشترک")
     except Exception as e:
-        logger.warning(f"عدم امکان تنظیم دستورات در منو: {e}")
+        logger.warning(f"عدم امکان تنظیم دستورات یا نام ربات در منو: {e}")
 
-    logger.info("🚀 ربات دنگ‌بگیر آماده به کار است و شروع به کار کرد...")
+    logger.info("🚀 ربات کافه دنگ آماده به کار است و شروع به کار کرد...")
     
     # راه‌اندازی تسک پس‌زمینه ارسال جملات انگیزشی روزانه ساعت ۹ صبح
     scheduler_task = asyncio.create_task(start_daily_quote_scheduler(bot))

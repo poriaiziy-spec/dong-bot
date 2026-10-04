@@ -51,7 +51,7 @@ def group_dashboard_keyboard(group_id: int, is_creator: bool = False) -> InlineK
         ],
         [
             InlineKeyboardButton(text="🎭 تغییر لحن ربات", callback_data=f"grp:tone_menu:{group_id}"),
-            InlineKeyboardButton(text="🔗 لینک دعوت", callback_data=f"grp:invite:{group_id}")
+            InlineKeyboardButton(text="💌 کارت دعوت اعضا", callback_data=f"grp:invite:{group_id}")
         ]
     ]
     
