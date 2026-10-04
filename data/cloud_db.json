@@ -9,8 +9,25 @@
       "bank_name": null
     }
   ],
-  "groups": [],
-  "group_members": [],
+  "groups": [
+    {
+      "id": 4,
+      "invite_code": "332a60b8",
+      "title": "باشگاه لاشی‌های بی‌ادعا 🐺",
+      "created_by": 1207936155,
+      "created_at": "2026-10-04 07:37:31",
+      "tone": "friendly"
+    }
+  ],
+  "group_members": [
+    {
+      "id": 4,
+      "group_id": 4,
+      "user_id": 1207936155,
+      "nickname": "شیطان لاپا 😈",
+      "joined_at": "2026-10-04 07:37:31"
+    }
+  ],
   "expenses": [],
   "expense_shares": []
 }
