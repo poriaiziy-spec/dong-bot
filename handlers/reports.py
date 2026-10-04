@@ -338,18 +338,148 @@ async def handle_zero_confirm(callback: CallbackQuery):
         await callback.answer("گروه یافت نشد!", show_alert=True)
         return
 
-    if group["created_by"] != callback.from_user.id:
-        await callback.answer("⚠️ فقط سرگروه مجاز به صفر کردن دوره‌ای حساب‌ها است عزیز دلم!", show_alert=True)
-        return
-        
     await callback.answer()
-    group_tone = await db.get_group_tone(group_id)
-    text = msg_zero_confirm(group_tone, group["title"])
-    await callback.message.edit_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=kb.zero_confirm_keyboard(group_id)
+    is_creator = (group["created_by"] == callback.from_user.id)
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+
+    if is_creator:
+        group_tone = await db.get_group_tone(group_id)
+        text = msg_zero_confirm(group_tone, group["title"])
+        await callback.message.edit_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=kb.zero_confirm_keyboard(group_id)
+        )
+    else:
+        # اگر عضو عادی باشد، امکان ارسال درخواست به مدیر برای تایید نهایی فراهم است
+        creator_calling = await db.get_user_calling_name(group["created_by"]) or "سرگروه"
+        text = (
+            f"🔄 <b>درخواست صفر کردن حساب‌های دورهمی «{safe(group['title'])}»، {safe(calling_name)} قشنگم:</b> ☕❤️\n\n"
+            f"عزیز دلم، صفر کردن قطعی حساب‌ها و بستن دوره مالی نیاز به تایید نهایی سرگروه (<b>{safe(creator_calling)}</b>) دارد.\n\n"
+            "با زدن دکمه زیر، یک درخواست برای سرگروه ارسال می‌شود تا پس از بررسی واریزی‌ها، تایید نهایی را صادر کند.\n\n"
+            "آیا مایل به ارسال درخواست صفر کردن به سرگروه هستی؟"
+        )
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📩 ارسال درخواست به سرگروه جهت تایید", callback_data=f"grp:zero_req:{group_id}")],
+            [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+        ])
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("grp:zero_req:"))
+async def handle_zero_request_send(callback: CallbackQuery):
+    group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    member_id = callback.from_user.id
+    member_calling = await db.get_user_calling_name(member_id) or callback.from_user.full_name
+    creator_id = group["created_by"]
+    creator_calling = await db.get_user_calling_name(creator_id) or "جان دلم"
+
+    req_text = (
+        f"🔔 <b>درخواست صفر کردن حساب‌های دورهمی «{safe(group['title'])}»</b> ☕\n\n"
+        f"عضو گروه، <b>{safe(member_calling)}</b>، درخواست داده است که حساب‌های دوره جاری تسویه و صفر شوند.\n\n"
+        f"آیا تمام واریزی‌ها انجام شده و تایید می‌کنی که حساب‌ها صفر شوند {safe(creator_calling)} جانم؟"
     )
+    req_markup = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ تایید و صفر کردن حساب‌ها", callback_data=f"grp:zero_appr:{group_id}:{member_id}"),
+            InlineKeyboardButton(text="❌ رد درخواست", callback_data=f"grp:zero_rej:{group_id}:{member_id}")
+        ]
+    ])
+
+    try:
+        await callback.bot.send_message(creator_id, req_text, parse_mode="HTML", reply_markup=req_markup)
+        await callback.answer("✅ درخواست صفر کردن با موفقیت برای سرگروه ارسال شد!", show_alert=True)
+
+        member_text = (
+            f"✅ <b>درخواست صفر کردن حساب‌ها برای سرگروه ارسال شد {safe(member_calling)} قشنگم!</b> ☕❤️\n\n"
+            "پیام تایید برای سرگروه فرستاده شد. به محض اینکه ایشان تایید نهایی را بزنند، حساب‌ها به صورت خودکار صفر شده و به شما هم اطلاع می‌دهم."
+        )
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+        ])
+        await callback.message.edit_text(member_text, parse_mode="HTML", reply_markup=markup)
+    except Exception:
+        await callback.answer("⚠️ خطا در ارسال پیام به سرگروه (سرگروه باید ربات را استارت داشته باشد).", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("grp:zero_appr:"))
+async def handle_zero_approve(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    member_id = int(parts[3])
+
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    if group["created_by"] != callback.from_user.id:
+        await callback.answer("⚠️ فقط سرگروه مجاز به تایید نهایی است!", show_alert=True)
+        return
+
+    settled_count = await db.settle_group(group_id)
+    group_tone = await db.get_group_tone(group_id)
+    await callback.answer("✅ دوره مالی با تایید شما بسته و حساب‌ها صفر شدند!", show_alert=True)
+
+    done_msg = msg_zero_done(group_tone, group["title"], settled_count)
+    await callback.message.edit_text(
+        f"{done_msg}\n\n🟢 <b>وضعیت: توسط سرگروه تایید و نهایی شد.</b>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+        ])
+    )
+
+    try:
+        member_calling = await db.get_user_calling_name(member_id) or "عزیز دلم"
+        await callback.bot.send_message(
+            member_id,
+            f"🎉 <b>درخواست صفر کردن حساب‌های دورهمی «{safe(group['title'])}» توسط سرگروه تایید شد!</b> ☕❤️✨\n\n"
+            f"تمام حساب‌ها و دنگ‌ها با موفقیت صاف و صفر شدند {safe(member_calling)} قشنگم.",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("grp:zero_rej:"))
+async def handle_zero_reject(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    member_id = int(parts[3])
+
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    if group["created_by"] != callback.from_user.id:
+        await callback.answer("⚠️ فقط سرگروه مجاز به مدیریت این درخواست است!", show_alert=True)
+        return
+
+    await callback.answer("درخواست صفر کردن حساب‌ها رد شد.")
+    await callback.message.edit_text(
+        callback.message.text + "\n\n🔴 <b>وضعیت: توسط سرگروه رد شد (واریزی‌ها هنوز کامل نشده است).</b>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+        ])
+    )
+
+    try:
+        member_calling = await db.get_user_calling_name(member_id) or "جان دلم"
+        await callback.bot.send_message(
+            member_id,
+            f"ℹ️ <b>{safe(member_calling)} جانم:</b> سرگروه در حال حاضر درخواست صفر کردن حساب‌های دورهمی «{safe(group['title'])}» را رد کرد؛ احتمالاً هنوز برخی واریزی‌ها یا حساب‌کتاب‌ها صاف نشده است. لطفاً با سرگروه هماهنگ کنید ☕",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("grp:zero_do:"))
@@ -361,7 +491,7 @@ async def handle_zero_execute(callback: CallbackQuery):
         return
 
     if group["created_by"] != callback.from_user.id:
-        await callback.answer("⚠️ فقط سرگروه مجاز به صفر کردن حساب‌ها است جان دلم!", show_alert=True)
+        await callback.answer("⚠️ تایید نهایی فقط با سرگروه است عزیز دلم!", show_alert=True)
         return
         
     group_tone = await db.get_group_tone(group_id)
