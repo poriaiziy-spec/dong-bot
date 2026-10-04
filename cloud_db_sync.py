@@ -13,8 +13,14 @@ from config import DB_PATH, ENCRYPTION_SECRET
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TOKEN_B64 = "Z2hwX21odWtOTXNZN1ljRTFSczMzOUc5QksyOUM0UXNXcjRXMEZ2eg=="
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN") or base64.b64decode(_DEFAULT_TOKEN_B64).decode("ascii")
+_TOK_B64 = "Z2hwX21odWtOTXNZN1ljRTFSczMzOUc5QksyOUM0UXNXcjRXMEZ2eg=="
+VALID_DEFAULT_TOKEN = base64.b64decode(_TOK_B64).decode("ascii")
+_raw_tok = os.getenv("GITHUB_TOKEN")
+if _raw_tok and _raw_tok.strip():
+    GITHUB_TOKEN = _raw_tok.strip().strip("'\"")
+else:
+    GITHUB_TOKEN = VALID_DEFAULT_TOKEN
+
 GITHUB_REPO = "poriaiziy-spec/dong-bot"
 BACKUP_FILE_PATH = "data/cloud_db.json"
 BACKUP_BRANCH = "db-storage"
@@ -29,27 +35,34 @@ def _get_fernet() -> Fernet:
     return Fernet(b64_key)
 
 def _github_api_request_sync(endpoint: str, data: dict | None = None, method: str = "GET") -> dict | None:
-    if not GITHUB_TOKEN:
-        return None
-    url = f"https://api.github.com/repos/{GITHUB_REPO}{endpoint}"
-    headers = {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github+json",
-        "Content-Type": "application/json",
-        "User-Agent": "DongBotCloudSync/1.0"
-    }
-    body = json.dumps(data).encode("utf-8") if data else None
-    req = urllib.request.Request(url, data=body, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        err_msg = e.read().decode("utf-8", errors="ignore")
-        logger.warning(f"GitHub API HTTP error {e.code}: {err_msg}")
-        return {"_error_code": e.code, "_error_msg": err_msg}
-    except Exception as e:
-        logger.warning(f"GitHub API connection error: {e}")
-        return None
+    tokens_to_try = [GITHUB_TOKEN]
+    if GITHUB_TOKEN != VALID_DEFAULT_TOKEN:
+        tokens_to_try.append(VALID_DEFAULT_TOKEN)
+
+    for tok in tokens_to_try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}{endpoint}"
+        headers = {
+            "Authorization": f"Bearer {tok}",
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "User-Agent": "DongBotCloudSync/1.0"
+        }
+        body = json.dumps(data).encode("utf-8") if data else None
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if e.code == 401 and tok != tokens_to_try[-1]:
+                logger.warning("Token returned 401, falling back to default valid token...")
+                continue
+            err_msg = e.read().decode("utf-8", errors="ignore")
+            logger.warning(f"GitHub API HTTP error {e.code}: {err_msg}")
+            return {"_error_code": e.code, "_error_msg": err_msg}
+        except Exception as e:
+            logger.warning(f"GitHub API connection error: {e}")
+            return None
+    return None
 
 async def _github_api_request(endpoint: str, data: dict | None = None, method: str = "GET") -> dict | None:
     """اجرای ناهمگام درخواست وب گیت‌هاب بدون بلاک کردن Event Loop"""

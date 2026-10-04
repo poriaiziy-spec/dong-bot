@@ -72,13 +72,14 @@ async def start_health_check_server():
         try:
             import aiosqlite
             from config import DB_PATH
-            from cloud_db_sync import _last_backup_status
+            from cloud_db_sync import _last_backup_status, GITHUB_TOKEN
             counts = {}
             async with aiosqlite.connect(DB_PATH) as db:
                 for t in ["users", "groups", "group_members", "expenses", "user_cards"]:
                     async with db.execute(f"SELECT COUNT(*) FROM {t}") as cur:
                         counts[t] = (await cur.fetchone())[0]
-            return web.json_response({"status": "online", "database": counts, "last_cloud_backup": _last_backup_status})
+            tok_preview = f"{GITHUB_TOKEN[:4]}...{GITHUB_TOKEN[-4:]}" if GITHUB_TOKEN else None
+            return web.json_response({"status": "online", "database": counts, "last_cloud_backup": _last_backup_status, "token_preview": tok_preview})
         except Exception as e:
             return web.json_response({"status": "error", "error": str(e)}, status=500)
 
