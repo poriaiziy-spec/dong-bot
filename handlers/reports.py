@@ -300,7 +300,8 @@ async def handle_ack_payment(callback: CallbackQuery):
     amount = int(parts[4])
     
     await callback.answer("✅ دریافت وجه تایید شد، دستت طلا عزیز دلم!")
-    await callback.message.edit_text(callback.message.text + "\n\n🟢 <b>وضعیت: توسط طلبکار تایید شد.</b>", parse_mode="HTML")
+    base_text = safe(callback.message.text or "")
+    await callback.message.edit_text(base_text + "\n\n🟢 <b>وضعیت: توسط طلبکار تایید شد.</b>", parse_mode="HTML")
     
     try:
         debtor_calling = await db.get_user_calling_name(debtor_id) or "عزیز دلم"
@@ -317,7 +318,8 @@ async def handle_ack_payment(callback: CallbackQuery):
 async def handle_nack_payment(callback: CallbackQuery):
     debtor_id = int(callback.data.split(":")[2])
     await callback.answer("پیام عدم دریافت ثبت شد.")
-    await callback.message.edit_text(callback.message.text + "\n\n🔴 <b>وضعیت: طلبکار اعلام کرد پولی دریافت نشده است!</b>", parse_mode="HTML")
+    base_text = safe(callback.message.text or "")
+    await callback.message.edit_text(base_text + "\n\n🔴 <b>وضعیت: طلبکار اعلام کرد پولی دریافت نشده است!</b>", parse_mode="HTML")
     
     try:
         debtor_calling = await db.get_user_calling_name(debtor_id) or "جان دلم"
@@ -463,8 +465,9 @@ async def handle_zero_reject(callback: CallbackQuery):
         return
 
     await callback.answer("درخواست صفر کردن حساب‌ها رد شد.")
+    base_text = safe(callback.message.text or "")
     await callback.message.edit_text(
-        callback.message.text + "\n\n🔴 <b>وضعیت: توسط سرگروه رد شد (واریزی‌ها هنوز کامل نشده است).</b>",
+        base_text + "\n\n🔴 <b>وضعیت: توسط سرگروه رد شد (واریزی‌ها هنوز کامل نشده است).</b>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]

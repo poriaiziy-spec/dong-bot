@@ -31,9 +31,11 @@ IRANIAN_BANKS = {
     "636949": "بانک حکمت"
 }
 
-def detect_bank_name(card_number: str) -> str | None:
+def detect_bank_name(card_number: str | None) -> str | None:
     """تشخیص نام بانک از روی ۶ رقم اول کارت"""
-    clean_card = "".join(filter(str.isdigit, card_number))
+    if not card_number:
+        return None
+    clean_card = "".join(filter(str.isdigit, str(card_number)))
     if len(clean_card) >= 6:
         prefix = clean_card[:6]
         return IRANIAN_BANKS.get(prefix)
@@ -43,19 +45,22 @@ def format_card_number(card_number: str | None) -> str:
     """فرمت شماره کارت به‌صورت ۴ رقم ۴ رقم (مثال: ۶۰۳۷-۹۹۱۱-۲۲۳۳-۴۴۵۵)"""
     if not card_number:
         return "ثبت نشده"
-    clean = "".join(filter(str.isdigit, card_number))
+    clean = "".join(filter(str.isdigit, str(card_number)))
     if len(clean) == 16:
         return f"{clean[:4]}-{clean[4:8]}-{clean[8:12]}-{clean[12:]}"
-    return card_number
+    return str(card_number)
 
-def clean_card_input(text: str) -> str | None:
+def clean_card_input(text: str | None) -> str | None:
     """پاکسازی و اعتبارسنجی شماره کارت (۱۶ رقم)"""
+    if not text:
+        return None
+    text_str = str(text).strip()
     # تبدیل ارقام فارسی و عربی
     for i, c in enumerate("۰۱۲۳۴۵۶۷۸۹"):
-        text = text.replace(c, str(i))
+        text_str = text_str.replace(c, str(i))
     for i, c in enumerate("٠١٢٣٤٥٦٧٨٩"):
-        text = text.replace(c, str(i))
-    clean = "".join(filter(str.isdigit, text))
+        text_str = text_str.replace(c, str(i))
+    clean = "".join(filter(str.isdigit, text_str))
     if len(clean) == 16:
         return clean
     return None

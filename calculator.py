@@ -36,11 +36,11 @@ def calculate_group_balances(members: list[dict], expenses: list[dict]) -> dict[
     member_stats = []
     # محاسبه تراز (Net Balance): مثبت = طلبکار، منفی = بدهکار
     net_balances: dict[int, int] = {}
-    all_uids = list(users_by_id.keys())
-    for uid in list(paid_map.keys()) + list(owed_map.keys()):
+    for uid in (set(paid_map.keys()) | set(owed_map.keys())):
         if uid not in users_by_id:
             users_by_id[uid] = {"id": uid, "full_name": "عضو سابق"}
-            all_uids.append(uid)
+
+    all_uids = list(users_by_id.keys())
 
     for uid in all_uids:
         u = users_by_id[uid]

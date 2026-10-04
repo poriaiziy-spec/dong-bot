@@ -155,13 +155,22 @@ async def handle_share_done(callback: CallbackQuery, state: FSMContext):
 
 async def save_expense_final(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    group_id = data["group_id"]
-    payer_id = data["payer_id"]
-    title = data["title"]
-    amount = data["amount"]
+    group_id = data.get("group_id")
+    payer_id = data.get("payer_id")
+    title = data.get("title")
+    amount = data.get("amount")
     selected_ids = data.get("selected_shares", [])
     tone = data.get("tone") or (await db.get_group_tone(group_id) if group_id else "friendly")
     
+    if not (group_id and payer_id and title and amount):
+        await callback.answer("اطلاعات ثبت هزینه منقضی شده است!", show_alert=True)
+        await state.clear()
+        if group_id:
+            await callback.message.edit_text("جلسه ثبت هزینه منقضی شده است.", reply_markup=kb.group_dashboard_keyboard(group_id))
+        else:
+            await callback.message.edit_text("جلسه ثبت هزینه منقضی شده است.", reply_markup=kb.main_menu_keyboard())
+        return
+
     if not selected_ids:
         await callback.answer("حداقل یک نفر باید در دنگ سهیم باشد!", show_alert=True)
         return

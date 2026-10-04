@@ -351,6 +351,9 @@ async def delete_group(group_id: int, creator_id: int) -> bool:
                 return False
 
         await db.execute("PRAGMA foreign_keys = ON;")
+        await db.execute("DELETE FROM expense_shares WHERE expense_id IN (SELECT id FROM expenses WHERE group_id = ?)", (group_id,))
+        await db.execute("DELETE FROM expenses WHERE group_id = ?", (group_id,))
+        await db.execute("DELETE FROM group_members WHERE group_id = ?", (group_id,))
         cursor = await db.execute("DELETE FROM groups WHERE id = ? AND created_by = ?", (group_id, creator_id))
         await db.commit()
         schedule_cloud_backup()
@@ -418,9 +421,13 @@ async def get_group_members(group_id: int) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
-            SELECT u.id, u.full_name, u.username, u.card_number, u.bank_name, u.calling_name, gm.nickname, gm.joined_at
+            SELECT u.id, u.full_name, u.username, 
+                   COALESCE(uc.card_number, u.card_number) AS card_number, 
+                   COALESCE(uc.bank_name, u.bank_name) AS bank_name, 
+                   u.calling_name, gm.nickname, gm.joined_at
             FROM group_members gm
             JOIN users u ON gm.user_id = u.id
+            LEFT JOIN user_cards uc ON uc.user_id = u.id AND uc.is_default = 1
             WHERE gm.group_id = ?
             ORDER BY gm.joined_at ASC
         """, (group_id,)) as cursor:

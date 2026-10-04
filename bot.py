@@ -11,6 +11,7 @@ if sys.platform.startswith("win"):
     except Exception:
         pass
 
+import aiohttp
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
