@@ -3,7 +3,7 @@ import secrets
 from config import DB_PATH
 from random_names import get_random_member_nickname
 from cloud_db_sync import restore_from_cloud, schedule_cloud_backup
-from name_utils import guess_meaningful_name
+from name_utils import guess_meaningful_name, is_clean_persian_name
 
 async def init_db():
     """ایجاد جداول دیتابیس در صورت عدم وجود"""
@@ -126,21 +126,72 @@ async def init_db():
     
     # بازیابی خودکار داده‌ها در سرورهای ابری
     await restore_from_cloud()
+    
+    # اصلاح و یکپارچه‌سازی خودکار نام تمامی کاربران قدیمی و جدید
+    await fix_all_user_names()
+
+
+async def fix_all_user_names():
+    """
+    بررسی و اصلاح یکپارچه نام تمام کاربران (قدیمی و جدید) در دیتابیس.
+    اگر نام کاربری لاتین، ناقص یا غیرفارسی باشد، به معادل فارسی معنادار تبدیل می‌شود.
+    """
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT id, username, full_name, calling_name FROM users") as cursor:
+                rows = await cursor.fetchall()
+                
+            updated = False
+            for r in rows:
+                uid, un, fn, cn = r[0], r[1], r[2], r[3]
+                if not is_clean_persian_name(cn):
+                    guessed = (
+                        guess_meaningful_name(cn) or 
+                        guess_meaningful_name(fn, None, un)
+                    )
+                    if guessed and is_clean_persian_name(guessed):
+                        await db.execute("UPDATE users SET calling_name = ? WHERE id = ?", (guessed, uid))
+                        await db.execute("""
+                            UPDATE group_members 
+                            SET nickname = ? 
+                            WHERE user_id = ? AND (nickname = ? OR nickname = ? OR nickname IS NULL)
+                        """, (guessed, uid, fn, cn))
+                        updated = True
+                        
+            if updated:
+                await db.commit()
+                schedule_cloud_backup()
+    except Exception as e:
+        print(f"fix_all_user_names warning: {e}")
 
 
 async def get_user_calling_name(user_id: int) -> str | None:
-    """دریافت نام صدا زدن معنادار کاربر"""
+    """دریافت نام صدا زدن معنادار و تمیز کاربر با اصلاح خودکار نام‌های قدیمی"""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT calling_name, full_name, username FROM users WHERE id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
-            if row:
-                if row[0]:
-                    return row[0]
-                guessed = guess_meaningful_name(row[1], None, row[2])
-                if guessed:
-                    await db.execute("UPDATE users SET calling_name = ? WHERE id = ?", (guessed, user_id))
-                    await db.commit()
-                    return guessed
+            if not row:
+                return None
+            
+            cn, fn, un = row[0], row[1], row[2]
+            if is_clean_persian_name(cn):
+                return cn
+                
+            # در صورتی که نام لاتین (مثل poriA Eazi) یا خالی باشد، تلاش برای حدس فارسی
+            guessed = (
+                guess_meaningful_name(cn) or 
+                guess_meaningful_name(fn, None, un)
+            )
+            if guessed and is_clean_persian_name(guessed):
+                await db.execute("UPDATE users SET calling_name = ? WHERE id = ?", (guessed, user_id))
+                await db.execute("""
+                    UPDATE group_members 
+                    SET nickname = ? 
+                    WHERE user_id = ? AND (nickname = ? OR nickname = ? OR nickname IS NULL)
+                """, (guessed, user_id, fn, cn))
+                await db.commit()
+                schedule_cloud_backup()
+                return guessed
             return None
 
 
@@ -158,20 +209,36 @@ async def set_user_calling_name(user_id: int, name: str):
 
 
 async def upsert_user(user_id: int, username: str | None, full_name: str, calling_name: str | None = None):
-    """ثبت یا به‌روزرسانی اطلاعات کاربر به همراه نام معنادار"""
-    if not calling_name:
-        calling_name = guess_meaningful_name(full_name, None, username)
+    """ثبت یا به‌روزرسانی اطلاعات کاربر به همراه نام معنادار فارسی"""
+    if not calling_name or not is_clean_persian_name(calling_name):
+        guessed = guess_meaningful_name(full_name, None, username)
+        if guessed and is_clean_persian_name(guessed):
+            calling_name = guessed
+        else:
+            calling_name = None
 
     async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT calling_name FROM users WHERE id = ?", (user_id,)) as cursor:
+            existing = await cursor.fetchone()
+            
+        existing_cn = existing[0] if existing else None
+        final_cn = calling_name
+        if existing_cn and is_clean_persian_name(existing_cn):
+            final_cn = existing_cn
+        elif not final_cn and existing_cn:
+            guessed_old = guess_meaningful_name(existing_cn)
+            if guessed_old and is_clean_persian_name(guessed_old):
+                final_cn = guessed_old
+
         await db.execute("""
             INSERT INTO users (id, username, full_name, calling_name, is_active)
             VALUES (?, ?, ?, ?, 1)
             ON CONFLICT(id) DO UPDATE SET
                 username = excluded.username,
                 full_name = excluded.full_name,
-                calling_name = COALESCE(users.calling_name, excluded.calling_name),
+                calling_name = COALESCE(?, users.calling_name),
                 is_active = 1
-        """, (user_id, username, full_name, calling_name))
+        """, (user_id, username, full_name, final_cn, final_cn))
         await db.commit()
         schedule_cloud_backup()
 
@@ -358,9 +425,13 @@ async def get_group_members(group_id: int) -> list[dict]:
             members = []
             for r in rows:
                 item = dict(r)
-                name = item.get("nickname") or item.get("calling_name")
-                if not name:
-                    name = guess_meaningful_name(item["full_name"], None, item.get("username")) or item["full_name"]
+                name = item.get("calling_name") or item.get("nickname")
+                if not name or not is_clean_persian_name(name):
+                    guessed = guess_meaningful_name(item["full_name"], None, item.get("username"))
+                    if guessed and is_clean_persian_name(guessed):
+                        name = guessed
+                    else:
+                        name = item.get("nickname") or item["full_name"]
                 item["nickname"] = name
                 item["display_name"] = name
                 members.append(item)

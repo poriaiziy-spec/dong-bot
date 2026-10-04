@@ -131,14 +131,16 @@ async def handle_settlement_calculation(callback: CallbackQuery):
                 f"   💳 شماره کارت: {card_str}\n"
             )
             
+            c_label = creditor.get("display_name") or creditor.get("nickname") or creditor["full_name"]
+            d_label = debtor.get("display_name") or debtor.get("nickname") or debtor["full_name"]
             # افزودن دکمه‌های اقدام سریع
             markup_buttons.append([
                 InlineKeyboardButton(
-                    text=f"💸 اعلام واریز به {creditor['full_name']}",
+                    text=f"💸 اعلام واریز به {c_label}",
                     callback_data=f"pay:notify:{group_id}:{debtor['id']}:{creditor['id']}:{item['amount']}"
                 ),
                 InlineKeyboardButton(
-                    text=f"🔔 یادآوری به {debtor['full_name']}",
+                    text=f"🔔 یادآوری به {d_label}",
                     callback_data=f"pay:remind:{group_id}:{debtor['id']}:{creditor['id']}:{item['amount']}"
                 )
             ])
@@ -187,14 +189,14 @@ async def handle_share_summary(callback: CallbackQuery):
     else:
         lines.append("⚖️ مبالغ پرداختی و تسویه نهایی:")
         for idx, item in enumerate(settlements, 1):
-            d_name = item["from_user"].get("full_name", "کاربر")
-            c_name = item["to_user"].get("full_name", "کاربر")
+            d_name = item["from_user"].get("display_name") or item["from_user"].get("nickname") or item["from_user"].get("full_name", "کاربر")
+            c_name = item["to_user"].get("display_name") or item["to_user"].get("nickname") or item["to_user"].get("full_name", "کاربر")
             card = item["to_user"].get("card_number")
             card_txt = f" (کارت: {format_card_number(card)})" if card else ""
             lines.append(f"{idx}. {d_name} ➔ {format_amount(item['amount'])} ➔ {c_name}{card_txt}")
     
     lines.append("─────────────────")
-    lines.append("🤖 محاسبه شده با ربات دنگ‌بگیر")
+    lines.append("🤖 محاسبه شده با ربات کافه دنگ ☕")
     
     share_text = "\n".join(lines)
     await callback.message.answer(
@@ -229,17 +231,19 @@ async def handle_payment_reminder(callback: CallbackQuery):
     else:
         card_info = "شماره کارت ثبت نشده (لطفاً از طریق ربات ثبت کنید)"
         
+    c_name = creditor.get("display_name") or creditor.get("nickname") or creditor["full_name"]
+    d_name = debtor.get("display_name") or debtor.get("nickname") or debtor["full_name"]
     reminder_text = render_reminder_msg(
         tone=group_tone,
-        creditor_name=creditor["full_name"],
-        debtor_name=debtor["full_name"],
+        creditor_name=c_name,
+        debtor_name=d_name,
         amount=amount,
         card_info=card_info
     )
     
     try:
         await callback.bot.send_message(debtor_id, reminder_text, parse_mode="HTML")
-        await callback.answer(f"✅ پیام یادآوری با موفقیت برای {debtor['full_name']} ارسال شد!", show_alert=True)
+        await callback.answer(f"✅ پیام یادآوری با موفقیت برای {d_name} ارسال شد!", show_alert=True)
     except Exception as e:
         await callback.answer("⚠️ امکان ارسال پیام به کاربر وجود ندارد (کاربر باید ربات را استارت کرده باشد).", show_alert=True)
 
@@ -263,10 +267,12 @@ async def handle_payment_notification(callback: CallbackQuery):
         await callback.answer("کاربر یافت نشد!", show_alert=True)
         return
         
+    c_name = creditor.get("display_name") or creditor.get("nickname") or creditor["full_name"]
+    d_name = debtor.get("display_name") or debtor.get("nickname") or debtor["full_name"]
     notice_text = render_payment_notice(
         tone=group_tone,
-        debtor_name=debtor["full_name"],
-        creditor_name=creditor["full_name"],
+        debtor_name=d_name,
+        creditor_name=c_name,
         amount=amount
     )
     
@@ -279,7 +285,7 @@ async def handle_payment_notification(callback: CallbackQuery):
     
     try:
         await callback.bot.send_message(creditor_id, notice_text, parse_mode="HTML", reply_markup=confirm_markup)
-        await callback.answer(f"✅ پیام اعلام واریزی برای {creditor['full_name']} ارسال شد!", show_alert=True)
+        await callback.answer(f"✅ پیام اعلام واریزی برای {c_name} ارسال شد!", show_alert=True)
     except Exception as e:
         await callback.answer("⚠️ خطا در ارسال پیام به طلبکار (باید ربات را استارت کرده باشد).", show_alert=True)
 

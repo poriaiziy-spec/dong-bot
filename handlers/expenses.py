@@ -99,7 +99,7 @@ async def handle_payer_selected(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ExpenseCreationStates.waiting_for_shares)
     
     payer_user = next((m for m in members if m["id"] == payer_id), None)
-    payer_name = payer_user["full_name"] if payer_user else "نامشخص"
+    payer_name = (payer_user.get("display_name") or payer_user.get("nickname") or payer_user["full_name"]) if payer_user else "نامشخص"
     tone = data.get("tone") or (await db.get_group_tone(group_id) if group_id else "friendly")
     
     text = msg_expense_shares_prompt(tone, data["title"], format_amount(data["amount"]), payer_name)
@@ -179,9 +179,9 @@ async def save_expense_final(callback: CallbackQuery, state: FSMContext):
     
     members = await db.get_group_members(group_id)
     payer = next((m for m in members if m["id"] == payer_id), None)
-    payer_name = payer["full_name"] if payer else "نامشخص"
+    payer_name = (payer.get("display_name") or payer.get("nickname") or payer["full_name"]) if payer else "نامشخص"
     
-    involved_members = [m["full_name"] for m in members if m["id"] in selected_ids]
+    involved_members = [m.get("display_name") or m.get("nickname") or m["full_name"] for m in members if m["id"] in selected_ids]
     involved_text = "، ".join(involved_members)
     
     text = msg_expense_saved(

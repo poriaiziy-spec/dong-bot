@@ -47,6 +47,7 @@ async def set_bot_commands(bot: Bot):
     """تنظیم منوی دستورات ربات در تلگرام"""
     commands = [
         BotCommand(command="start", description="🏠 شروع و منوی اصلی"),
+        BotCommand(command="myname", description="👤 مشاهده و ویرایش نام من"),
         BotCommand(command="groups", description="👥 گروه‌های من"),
         BotCommand(command="newgroup", description="➕ ساخت گروه دنگ جدید"),
         BotCommand(command="cancel", description="❌ لغو عملیات جاری"),

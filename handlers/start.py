@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 import database as db
 import keyboards as kb
 from helpers import safe
-from name_utils import guess_meaningful_name, clean_input_name
+from name_utils import guess_meaningful_name, clean_input_name, is_clean_persian_name
 from states import NamePromptStates
 
 router = Router()
@@ -47,13 +47,14 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
         
     await db.upsert_user(user.id, user.username, user.full_name)
     calling_name = await db.get_user_calling_name(user.id)
-    if not calling_name:
-        calling_name = guess_meaningful_name(user.first_name, user.last_name, user.username)
-        if calling_name:
+    if not calling_name or not is_clean_persian_name(calling_name):
+        guessed = guess_meaningful_name(user.first_name, user.last_name, user.username)
+        if guessed and is_clean_persian_name(guessed):
+            calling_name = guessed
             await db.set_user_calling_name(user.id, calling_name)
 
-    # اگر اسمی به صورت معنادار تشخیص داده نشد، از کاربر بپرس و تایید بگیر
-    if not calling_name:
+    # اگر اسمی به صورت معنادار تشخیص داده نشد یا هنوز معتبر نیست، از کاربر بپرس
+    if not calling_name or not is_clean_persian_name(calling_name):
         args = command.args
         if args and args.startswith("join_"):
             await state.update_data(pending_join_invite=args.replace("join_", "").strip())
@@ -117,8 +118,8 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
 @router.message(NamePromptStates.waiting_for_name)
 async def handle_name_input(message: Message, state: FSMContext):
     clean = clean_input_name(message.text or "")
-    if not clean:
-        await message.answer("⚠️ لطفاً یک اسم معتبر (حداقل ۲ حرف و بدون علائم عجیب) بنویس رفیق:")
+    if not clean or not is_clean_persian_name(clean):
+        await message.answer("⚠️ لطفاً یک اسم معتبر فارسی (حداقل ۲ حرف و بدون اعداد یا علائم عجیب) بنویس رفیق:")
         return
 
     await state.update_data(temp_name=clean)
@@ -126,7 +127,7 @@ async def handle_name_input(message: Message, state: FSMContext):
     
     text = (
         f"✨ اسمت رو <b>«{safe(clean)}»</b> بذارم رفیق؟\n\n"
-        "توی تمام دورهمی‌ها و فرمول‌های دنگ با همین اسم صدات می‌زنم."
+        "توی تمام دورهمی‌ها، حساب‌کتاب‌ها و پیام‌های کافه دنگ با همین اسم صدات می‌زنم."
     )
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ آره، همین درسته", callback_data="name:confirm")],
@@ -178,19 +179,24 @@ async def handle_name_retry(callback: CallbackQuery, state: FSMContext):
     )
 
 
+@router.message(Command("myname", "name", "setname"))
 @router.callback_query(F.data == "name:edit")
-async def handle_name_edit_prompt(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    current_name = await db.get_user_calling_name(callback.from_user.id) or callback.from_user.full_name
+async def handle_name_edit_prompt(event: Message | CallbackQuery, state: FSMContext):
+    user_id = event.from_user.id
+    current_name = await db.get_user_calling_name(user_id) or "ثبت نشده"
     await state.set_state(NamePromptStates.waiting_for_name)
     text = (
-        f"👤 نام فعلی شما در ربات: <b>«{safe(current_name)}»</b>\n\n"
-        "✍️ <b>نام جدید مدنظرت رو تایپ کن و بفرست:</b>"
+        f"👤 نام فعلی شما در کافه دنگ: <b>«{safe(current_name)}»</b> ☕\n\n"
+        "✍️ <b>اگه دوست داری عوضش کنی یا اسم دیگه‌ای برات بذارم، نام مدنظرت رو تایپ کن و بفرست:</b>"
     )
     cancel_markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ انصراف", callback_data="nav:main")]
+        [InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data="nav:main")]
     ])
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_markup)
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        await event.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_markup)
+    else:
+        await event.answer(text, parse_mode="HTML", reply_markup=cancel_markup)
 
 
 @router.message(Command("help"))
@@ -225,7 +231,15 @@ async def handle_nav_main(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     user = callback.from_user
-    calling_name = await db.get_user_calling_name(user.id) or user.full_name
+    calling_name = await db.get_user_calling_name(user.id)
+    if not calling_name or not is_clean_persian_name(calling_name):
+        guessed = guess_meaningful_name(user.first_name, user.last_name, user.username)
+        if guessed and is_clean_persian_name(guessed):
+            calling_name = guessed
+            await db.set_user_calling_name(user.id, calling_name)
+        else:
+            calling_name = "رفیق"
+
     welcome_text = (
         f"جانم <b>{safe(calling_name)}</b> جان! در خدمتم رفیق ☕\n\n"
         "چه کاری برات انجام بدم؟ از منوی زیر انتخاب کن تا بریم جلو:"

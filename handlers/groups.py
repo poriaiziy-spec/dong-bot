@@ -143,8 +143,7 @@ async def handle_view_group(callback: CallbackQuery, state: FSMContext):
     current_tone_name = TONE_NAMES.get(current_tone, "😊 دوستانه و خودمونی")
     
     members_lines = "\n".join([
-        f"• <b>{safe(m.get('nickname', m['full_name']))}</b>" + 
-        (f" <i>({safe(m['full_name'])})</i>" if m.get('nickname') and m.get('nickname') != m['full_name'] else "")
+        f"• <b>{safe(m.get('display_name') or m.get('nickname') or m['full_name'])}</b>"
         for m in members
     ])
     

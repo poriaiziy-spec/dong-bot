@@ -107,9 +107,9 @@ async def restore_from_cloud():
             
             for u in dump.get("users", []):
                 await db.execute("""
-                    INSERT OR REPLACE INTO users (id, username, full_name, card_number, bank_name, is_active, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (u["id"], u.get("username"), u["full_name"], u.get("card_number"), u.get("bank_name"), u.get("is_active", 1), u.get("created_at")))
+                    INSERT OR REPLACE INTO users (id, username, full_name, calling_name, card_number, bank_name, is_active, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (u["id"], u.get("username"), u["full_name"], u.get("calling_name"), u.get("card_number"), u.get("bank_name"), u.get("is_active", 1), u.get("created_at")))
                 
             for g in dump.get("groups", []):
                 await db.execute("""
