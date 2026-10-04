@@ -126,15 +126,59 @@ def tone_selection_keyboard(group_id: int, current_tone: str = "friendly") -> In
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def card_menu_keyboard(has_card: bool) -> InlineKeyboardMarkup:
-    """منوی مدیریت کارت بانکی کاربر"""
-    buttons = [
-        [InlineKeyboardButton(text="✏️ ثبت / ویرایش شماره کارت", callback_data="card:edit")]
-    ]
-    if has_card:
+def cards_list_keyboard(cards: list[dict]) -> InlineKeyboardMarkup:
+    """لیست کارت‌های بانکی ثبت‌شده به همراه دکمه افزودن و منو"""
+    buttons = []
+    for c in cards:
+        is_def = "⭐ " if c.get("is_default") else "💳 "
+        card_num = c.get("card_number", "")
+        last4 = card_num[-4:] if len(card_num) >= 4 else ""
+        bank = c.get("bank_name") or "بانک"
+        def_tag = " (اصلی)" if c.get("is_default") else ""
         buttons.append([
-            InlineKeyboardButton(text="🗑️ حذف شماره کارت", callback_data="card:delete")
+            InlineKeyboardButton(
+                text=f"{is_def}{bank} •••• {last4}{def_tag}",
+                callback_data=f"card:view:{c['id']}"
+            )
         ])
+    buttons.append([
+        InlineKeyboardButton(text="➕ افزودن کارت بانکی جدید", callback_data="card:add")
+    ])
+    buttons.append([
+        InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="nav:main")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def card_detail_keyboard(card_id: int, is_default: bool) -> InlineKeyboardMarkup:
+    """کیبورد مدیریت یک کارت مشخص"""
+    buttons = []
+    if not is_default:
+        buttons.append([
+            InlineKeyboardButton(text="⭐ انتخاب به عنوان کارت پیش‌فرض تسویه", callback_data=f"card:set_def:{card_id}")
+        ])
+    buttons.append([
+        InlineKeyboardButton(text="🗑️ حذف این کارت", callback_data=f"card:del_confirm:{card_id}")
+    ])
+    buttons.append([
+        InlineKeyboardButton(text="🔙 بازگشت به لیست کارت‌ها", callback_data="nav:my_card")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def card_delete_confirm_keyboard(card_id: int) -> InlineKeyboardMarkup:
+    """تأییدیه حذف کارت بانکی"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚠️ بله، کارت حذف شود", callback_data=f"card:del_do:{card_id}")],
+        [InlineKeyboardButton(text="❌ انصراف", callback_data=f"card:view:{card_id}")]
+    ])
+
+
+def card_menu_keyboard(has_card: bool) -> InlineKeyboardMarkup:
+    """منوی ساده سازگاری برای کارت بانکی"""
+    buttons = [
+        [InlineKeyboardButton(text="➕ ثبت شماره کارت جدید", callback_data="card:add")]
+    ]
     buttons.append([
         InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="nav:main")
     ])

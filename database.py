@@ -94,6 +94,32 @@ async def init_db():
             )
         """)
 
+        # جدول کارت‌های بانکی اعضا (پشتیبانی از چندین شماره کارت برای هر فرد)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS user_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                card_number TEXT NOT NULL,
+                bank_name TEXT NOT NULL,
+                card_title TEXT,
+                is_default INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, card_number),
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+        """)
+
+        # انتقال خودکار شماره‌کارت‌های تکی قبلی به جدول جدید
+        try:
+            await db.execute("""
+                INSERT OR IGNORE INTO user_cards (user_id, card_number, bank_name, is_default)
+                SELECT id, card_number, bank_name, 1
+                FROM users
+                WHERE card_number IS NOT NULL AND card_number != '';
+            """)
+        except Exception:
+            pass
+
         await db.commit()
     
     # بازیابی خودکار داده‌ها در سرورهای ابری
@@ -401,27 +427,141 @@ async def settle_group(group_id: int) -> int:
         return cursor.rowcount
 
 
-async def update_user_card(user_id: int, card_number: str | None, bank_name: str | None):
-    """ذخیره یا ویرایش شماره کارت و نام بانک کاربر"""
+async def ensure_user_exists(user_id: int, full_name: str = "کاربر", username: str | None = None):
+    """اطمینان از وجود داشتن رکورد کاربر در جدول users برای جلوگیری از خطای عدم ذخیره‌سازی یا کلید خارجی"""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            UPDATE users
-            SET card_number = ?, bank_name = ?
-            WHERE id = ?
-        """, (card_number, bank_name, user_id))
+            INSERT INTO users (id, username, full_name, is_active)
+            VALUES (?, ?, ?, 1)
+            ON CONFLICT(id) DO UPDATE SET is_active = 1
+        """, (user_id, username, full_name))
+        await db.commit()
+
+
+async def add_user_card(user_id: int, card_number: str, bank_name: str, card_title: str | None = None) -> tuple[int, bool]:
+    """
+    افزودن کارت بانکی جدید برای کاربر.
+    اگر اولین کارت کاربر باشد، به صورت خودکار به عنوان پیش‌فرض تنظیم می‌شود.
+    خروجی: (card_id, is_new)
+    """
+    await ensure_user_exists(user_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM user_cards WHERE user_id = ?", (user_id,)) as cursor:
+            count = (await cursor.fetchone())[0]
+            
+        is_default = 1 if count == 0 else 0
+        
+        try:
+            cursor_ins = await db.execute("""
+                INSERT INTO user_cards (user_id, card_number, bank_name, card_title, is_default)
+                VALUES (?, ?, ?, ?, ?)
+            """, (user_id, card_number, bank_name, card_title, is_default))
+            card_id = cursor_ins.lastrowid
+            
+            # اگر کارت پیش‌فرض بود، اطلاعات در جدول users هم ثبت شود
+            if is_default:
+                await db.execute("UPDATE users SET card_number = ?, bank_name = ? WHERE id = ?", (card_number, bank_name, user_id))
+                
+            await db.commit()
+            schedule_cloud_backup()
+            return card_id, True
+        except aiosqlite.IntegrityError:
+            # کارت قبلاً برای این کاربر ثبت شده
+            async with db.execute("SELECT id FROM user_cards WHERE user_id = ? AND card_number = ?", (user_id, card_number)) as cursor_sel:
+                row = await cursor_sel.fetchone()
+                return (row[0], False) if row else (0, False)
+
+
+async def get_user_cards(user_id: int) -> list[dict]:
+    """دریافت تمام کارت‌های بانکی ثبت‌شده کاربر (کارت پیش‌فرض در ابتدا)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM user_cards 
+            WHERE user_id = ? 
+            ORDER BY is_default DESC, id DESC
+        """, (user_id,)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def get_user_card_by_id(user_id: int, card_id: int) -> dict | None:
+    """دریافت مشخصات یک کارت با شناسه"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM user_cards WHERE id = ? AND user_id = ?", (card_id, user_id)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def set_default_card(user_id: int, card_id: int) -> bool:
+    """انتخاب یک کارت به عنوان کارت اصلی و پیش‌فرض جهت نمایش در تسویه‌حساب‌ها"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT card_number, bank_name FROM user_cards WHERE id = ? AND user_id = ?", (card_id, user_id)) as cursor:
+            card = await cursor.fetchone()
+            if not card:
+                return False
+            card_num, bank = card[0], card[1]
+
+        await db.execute("UPDATE user_cards SET is_default = 0 WHERE user_id = ?", (user_id,))
+        await db.execute("UPDATE user_cards SET is_default = 1 WHERE id = ? AND user_id = ?", (card_id, user_id))
+        await db.execute("UPDATE users SET card_number = ?, bank_name = ? WHERE id = ?", (card_num, bank, user_id))
         await db.commit()
         schedule_cloud_backup()
+        return True
+
+
+async def delete_user_card(user_id: int, card_id: int) -> bool:
+    """حذف یک کارت بانکی"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT is_default FROM user_cards WHERE id = ? AND user_id = ?", (card_id, user_id)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return False
+            was_default = row[0]
+
+        await db.execute("DELETE FROM user_cards WHERE id = ? AND user_id = ?", (card_id, user_id))
+        
+        # اگر کارت پیش‌فرض حذف شد، کارت دیگری را پیش‌فرض کن
+        if was_default:
+            async with db.execute("SELECT id, card_number, bank_name FROM user_cards WHERE user_id = ? ORDER BY id DESC LIMIT 1", (user_id,)) as cursor_next:
+                next_card = await cursor_next.fetchone()
+                if next_card:
+                    await db.execute("UPDATE user_cards SET is_default = 1 WHERE id = ?", (next_card[0],))
+                    await db.execute("UPDATE users SET card_number = ?, bank_name = ? WHERE id = ?", (next_card[1], next_card[2], user_id))
+                else:
+                    await db.execute("UPDATE users SET card_number = NULL, bank_name = NULL WHERE id = ?", (user_id,))
+
+        await db.commit()
+        schedule_cloud_backup()
+        return True
 
 
 async def get_user_card(user_id: int) -> dict:
-    """دریافت اطلاعات کارت بانکی کاربر"""
+    """دریافت کارت اصلی کاربر (سازگاری با کدهای موجود)"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT card_number, bank_name FROM users WHERE id = ?", (user_id,)) as cursor:
+        async with db.execute("SELECT card_number, bank_name FROM user_cards WHERE user_id = ? ORDER BY is_default DESC, id DESC LIMIT 1", (user_id,)) as cursor:
             row = await cursor.fetchone()
             if row:
                 return dict(row)
+        async with db.execute("SELECT card_number, bank_name FROM users WHERE id = ?", (user_id,)) as cursor_u:
+            row_u = await cursor_u.fetchone()
+            if row_u and row_u["card_number"]:
+                return dict(row_u)
             return {"card_number": None, "bank_name": None}
+
+
+async def update_user_card(user_id: int, card_number: str | None, bank_name: str | None):
+    """ذخیره یا ویرایش شماره کارت (جهت سازگاری با سایر بخش‌ها)"""
+    if card_number and bank_name:
+        await add_user_card(user_id, card_number, bank_name)
+    else:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("UPDATE users SET card_number = NULL, bank_name = NULL WHERE id = ?", (user_id,))
+            await db.execute("DELETE FROM user_cards WHERE user_id = ?", (user_id,))
+            await db.commit()
+            schedule_cloud_backup()
 
 
 async def set_group_tone(group_id: int, tone: str):
@@ -451,6 +591,7 @@ async def reset_all_database():
         await db.execute("DELETE FROM expenses;")
         await db.execute("DELETE FROM group_members;")
         await db.execute("DELETE FROM groups;")
+        await db.execute("DELETE FROM user_cards;")
         await db.execute("DELETE FROM users;")
         await db.execute("PRAGMA foreign_keys = ON;")
         await db.commit()
