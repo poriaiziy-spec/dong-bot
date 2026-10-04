@@ -147,6 +147,9 @@ async def handle_settlement_calculation(callback: CallbackQuery):
         text = "\n".join(lines)
         
     markup_buttons.append([
+        InlineKeyboardButton(text="📋 متن آماده کپی/فوروارد به گروه", callback_data=f"grp:share_summary:{group_id}")
+    ])
+    markup_buttons.append([
         InlineKeyboardButton(text="📊 مشاهده گزارش تفکیکی", callback_data=f"grp:report:{group_id}")
     ])
     markup_buttons.append([
@@ -155,6 +158,49 @@ async def handle_settlement_calculation(callback: CallbackQuery):
     ])
     
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=markup_buttons))
+
+
+@router.callback_query(F.data.startswith("grp:share_summary:"))
+async def handle_share_summary(callback: CallbackQuery):
+    await callback.answer()
+    group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        return
+    members = await db.get_group_members(group_id)
+    active_expenses = await db.get_active_expenses(group_id)
+    if not active_expenses:
+        await callback.answer("هنوز خرجی در این دوره ثبت نشده است!", show_alert=True)
+        return
+        
+    calc_res = calculate_group_balances(members, active_expenses)
+    total_spent = calc_res["total_spent"]
+    settlements = calc_res["settlements"]
+    
+    lines = [
+        f"📊 خلاصه حساب‌های گروه «{group['title']}»",
+        f"💰 مجموع هزینه‌ها: {format_amount(total_spent)}",
+        "─────────────────"
+    ]
+    if not settlements:
+        lines.append("🎉 تمامی حساب‌ها تسویه و صاف است!")
+    else:
+        lines.append("⚖️ مبالغ پرداختی و تسویه نهایی:")
+        for idx, item in enumerate(settlements, 1):
+            d_name = item["from_user"].get("full_name", "کاربر")
+            c_name = item["to_user"].get("full_name", "کاربر")
+            card = item["to_user"].get("card_number")
+            card_txt = f" (کارت: {format_card_number(card)})" if card else ""
+            lines.append(f"{idx}. {d_name} ➔ {format_amount(item['amount'])} ➔ {c_name}{card_txt}")
+    
+    lines.append("─────────────────")
+    lines.append("🤖 محاسبه شده با ربات دنگ‌بگیر")
+    
+    share_text = "\n".join(lines)
+    await callback.message.answer(
+        f"📋 <b>متن آماده برای کپی یا فوروارد به گروه دوستان:</b>\n<i>(روی کادر زیر بزنید تا کپی شود)</i>\n\n<code>{safe(share_text)}</code>",
+        parse_mode="HTML"
+    )
 
 
 @router.callback_query(F.data.startswith("pay:remind:"))

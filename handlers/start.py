@@ -99,6 +99,18 @@ async def handle_help(event: Message | CallbackQuery, state: FSMContext):
         await event.answer(HELP_TEXT, parse_mode="HTML", reply_markup=reply_markup)
 
 
+@router.message(Command("cancel"))
+@router.message(F.text.in_(["لغو", "انصراف", "کنسل", "cancel", "Cancel"]))
+async def handle_cancel(message: Message, state: FSMContext):
+    """لغو عملیات جاری و پاکسازی حالت FSM"""
+    current_state = await state.get_state()
+    await state.clear()
+    if current_state:
+        await message.answer("❌ عملیات جاری لغو شد و به منوی اصلی برگشتید.", reply_markup=kb.main_menu_keyboard())
+    else:
+        await message.answer("ℹ️ در حال حاضر عملیات فعالی وجود ندارد.", reply_markup=kb.main_menu_keyboard())
+
+
 @router.callback_query(F.data == "nav:main")
 async def handle_nav_main(callback: CallbackQuery, state: FSMContext):
     await state.clear()

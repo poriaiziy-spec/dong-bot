@@ -380,8 +380,40 @@ async def handle_group_invite(callback: CallbackQuery, bot: Bot):
         f"<code>{invite_link}</code>\n\n"
         "💡 <i>کافی است این لینک را برای دوستانتان بفرستید. به محض اینکه استارت را بزنند، به عضویت گروه در می‌آیند.</i>"
     )
-    markup = InlineKeyboardMarkup(inline_keyboard=[
+    is_creator = (group["created_by"] == callback.from_user.id)
+    buttons = []
+    if is_creator:
+        buttons.append([InlineKeyboardButton(text="🔄 باطل کردن و ساخت لینک جدید", callback_data=f"grp:invite_regen:{group_id}")])
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")])
+
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+
+
+@router.callback_query(F.data.startswith("grp:invite_regen:"))
+async def handle_group_invite_regen(callback: CallbackQuery, bot: Bot):
+    group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
+    if not group or group["created_by"] != callback.from_user.id:
+        await callback.answer("⚠️ فقط سرگروه مجاز به تغییر لینک دعوت است!", show_alert=True)
+        return
+
+    new_code = await db.regenerate_invite_code(group_id, callback.from_user.id)
+    if not new_code:
+        await callback.answer("خطا در ایجاد لینک جدید!", show_alert=True)
+        return
+
+    await callback.answer("✅ لینک قبلی باطل و لینک جدید ساخته شد!", show_alert=True)
+    bot_info = await bot.get_me()
+    invite_link = f"https://t.me/{bot_info.username}?start=join_{new_code}"
+
+    text = (
+        f"🔗 <b>لینک دعوت جدید گروه «{safe(group['title'])}»:</b>\n\n"
+        f"<code>{invite_link}</code>\n\n"
+        "⚠️ <i>لینک قبلی باطل شد و دیگر کسی با لینک قدیمی نمی‌تواند عضو شود.</i>"
+    )
+    buttons = [
+        [InlineKeyboardButton(text="🔄 ساخت مجدد لینک جدید", callback_data=f"grp:invite_regen:{group_id}")],
         [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
-    ])
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+    ]
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 

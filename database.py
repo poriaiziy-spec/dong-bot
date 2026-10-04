@@ -138,6 +138,19 @@ async def create_group(title: str, created_by: int) -> tuple[int, str]:
         return group_id, invite_code
 
 
+async def regenerate_invite_code(group_id: int, creator_id: int) -> str | None:
+    """تولید مجدد کد دعوت برای باطل کردن لینک قبلی توسط سازنده گروه"""
+    new_code = secrets.token_hex(4)
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT id FROM groups WHERE id = ? AND created_by = ?", (group_id, creator_id)) as cursor:
+            if not await cursor.fetchone():
+                return None
+        await db.execute("UPDATE groups SET invite_code = ? WHERE id = ?", (new_code, group_id))
+        await db.commit()
+        schedule_cloud_backup()
+        return new_code
+
+
 async def get_group_by_code(invite_code: str) -> dict | None:
     """دریافت مشخصات گروه با استفاده از کد دعوت"""
     async with aiosqlite.connect(DB_PATH) as db:

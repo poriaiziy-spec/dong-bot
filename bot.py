@@ -49,6 +49,7 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="start", description="🏠 شروع و منوی اصلی"),
         BotCommand(command="groups", description="👥 گروه‌های من"),
         BotCommand(command="newgroup", description="➕ ساخت گروه دنگ جدید"),
+        BotCommand(command="cancel", description="❌ لغو عملیات جاری"),
         BotCommand(command="help", description="💡 راهنمای کار با ربات"),
         BotCommand(command="reset_all_data", description="🧹 ریست و پاکسازی کامل دیتابیس"),
     ]
@@ -82,6 +83,19 @@ async def main():
     )
     
     dp = Dispatcher()
+
+    # مدیریت خطاهای پیش‌بینی‌نشده جهت جلوگیری از توقف ربات
+    @dp.error()
+    async def global_error_handler(event):
+        logger.error(f"خطای مدیریت‌نشده: {event.exception}", exc_info=True)
+        try:
+            if hasattr(event, "update") and event.update:
+                if event.update.callback_query:
+                    await event.update.callback_query.answer("⚠️ خطایی رخ داد. لطفاً مجدداً تلاش کنید.", show_alert=True)
+                elif event.update.message:
+                    await event.update.message.answer("⚠️ متأسفانه در پردازش این دستور خطایی رخ داد. لطفاً با /start مجدداً امتحان کنید.")
+        except Exception:
+            pass
 
     # اتصال روت‌ها و هندلرهای ربات
     main_router = setup_routers()
