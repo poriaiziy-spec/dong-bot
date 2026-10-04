@@ -55,16 +55,25 @@ def group_dashboard_keyboard(group_id: int, is_creator: bool = False) -> InlineK
         ]
     ]
     
-    # دکمه مدیریت و اخراج اعضا مخصوص سرگروه
+    # دکمه‌های سرگروه
     if is_creator:
         keyboard.append([
-            InlineKeyboardButton(text="👑 مدیریت و اخراج اعضا", callback_data=f"grp:members_manage:{group_id}")
+            InlineKeyboardButton(text="👑 مدیریت اعضا", callback_data=f"grp:members_manage:{group_id}"),
+            InlineKeyboardButton(text="🗑️ حذف گروه", callback_data=f"grp:del_confirm:{group_id}")
         ])
         
     keyboard.append([
         InlineKeyboardButton(text="🔙 بازگشت به لیست گروه‌ها", callback_data="nav:my_groups")
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def group_delete_confirm_keyboard(group_id: int) -> InlineKeyboardMarkup:
+    """تأییدیه حذف کامل گروه توسط سرگروه"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚠️ بله، گروه کلاً حذف شود", callback_data=f"grp:del_do:{group_id}")],
+        [InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data=f"grp:view:{group_id}")]
+    ])
 
 
 def members_kick_keyboard(group_id: int, members: list[dict], creator_id: int) -> InlineKeyboardMarkup:

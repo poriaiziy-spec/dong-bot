@@ -260,6 +260,48 @@ async def handle_kick_do(callback: CallbackQuery, bot: Bot):
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
 
 
+@router.callback_query(F.data.startswith("grp:del_confirm:"))
+async def handle_delete_group_confirm(callback: CallbackQuery):
+    group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+        
+    if group["created_by"] != callback.from_user.id:
+        await callback.answer("⚠️ فقط سرگروه مجاز به حذف گروه است!", show_alert=True)
+        return
+        
+    await callback.answer()
+    text = (
+        f"⚠️ <b>هشدار حذف کامل گروه «{group['title']}»:</b>\n\n"
+        "آیا کاملاً مطمئن هستید که می‌خواهید این گروه را حذف کنید؟\n\n"
+        "• تمام سوابق، اعضا، لقب‌ها، دنگ‌ها و هزینه‌های این گروه به طور کامل پاک خواهند شد و این عملیات برگشت‌پذیر نیست!"
+    )
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.group_delete_confirm_keyboard(group_id))
+
+
+@router.callback_query(F.data.startswith("grp:del_do:"))
+async def handle_delete_group_do(callback: CallbackQuery, state: FSMContext):
+    group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+        
+    if group["created_by"] != callback.from_user.id:
+        await callback.answer("⚠️ فقط سرگروه مجاز به حذف گروه است!", show_alert=True)
+        return
+        
+    success = await db.delete_group(group_id, callback.from_user.id)
+    if success:
+        await callback.answer(f"✅ گروه «{group['title']}» با موفقیت حذف شد.", show_alert=True)
+    else:
+        await callback.answer("⚠️ خطا در حذف گروه!", show_alert=True)
+        
+    await handle_my_groups(callback, state)
+
+
 
 @router.callback_query(F.data.startswith("grp:tone_menu:"))
 async def handle_tone_menu(callback: CallbackQuery):

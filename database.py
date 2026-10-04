@@ -187,6 +187,30 @@ async def remove_group_member(group_id: int, user_id: int) -> bool:
         return cursor.rowcount > 0
 
 
+async def delete_group(group_id: int, creator_id: int) -> bool:
+    """حذف کامل یک گروه دنگ توسط سازنده آن"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        # بررسی اینکه آیا کاربر واقعاً سازنده گروه است
+        async with db.execute("SELECT id FROM groups WHERE id = ? AND created_by = ?", (group_id, creator_id)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return False
+
+        await db.execute("PRAGMA foreign_keys = ON;")
+        cursor = await db.execute("DELETE FROM groups WHERE id = ? AND created_by = ?", (group_id, creator_id))
+        await db.commit()
+        schedule_cloud_backup()
+        return cursor.rowcount > 0
+
+
+async def get_all_user_ids() -> list[int]:
+    """دریافت شناسه‌های تمام کاربران ربات جهت ارسال پیام صبحگاهی"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT id FROM users") as cursor:
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows]
+
+
 
 
 async def get_user_groups(user_id: int) -> list[dict]:
