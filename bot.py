@@ -68,8 +68,23 @@ async def start_health_check_server():
     """راه‌اندازی سرور وب سبک برای سازگاری با هاست‌های ابری رایگان مانند Render و HuggingFace"""
     port = int(os.getenv("PORT", "8080"))
     app = web.Application()
+    async def status_api_handler(req):
+        try:
+            import aiosqlite
+            from config import DB_PATH
+            from cloud_db_sync import _last_backup_status
+            counts = {}
+            async with aiosqlite.connect(DB_PATH) as db:
+                for t in ["users", "groups", "group_members", "expenses", "user_cards"]:
+                    async with db.execute(f"SELECT COUNT(*) FROM {t}") as cur:
+                        counts[t] = (await cur.fetchone())[0]
+            return web.json_response({"status": "online", "database": counts, "last_cloud_backup": _last_backup_status})
+        except Exception as e:
+            return web.json_response({"status": "error", "error": str(e)}, status=500)
+
     app.router.add_get("/", lambda req: web.Response(text=_STATUS_HTML, content_type="text/html", charset="utf-8"))
     app.router.add_get("/health", lambda req: web.Response(text="OK"))
+    app.router.add_get("/api/status", status_api_handler)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
