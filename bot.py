@@ -82,9 +82,40 @@ async def start_health_check_server():
         except Exception as e:
             return web.json_response({"status": "error", "error": str(e)}, status=500)
 
+    async def restore_api_handler(req):
+        try:
+            import traceback
+            import aiosqlite
+            from config import DB_PATH
+            from cloud_db_sync import restore_from_cloud, _github_api_request, BACKUP_FILE_PATH, BACKUP_BRANCH, GITHUB_TOKEN, _get_fernet
+            res_debug = {}
+            res_debug["has_github_token"] = bool(GITHUB_TOKEN)
+            res_debug["token_len"] = len(GITHUB_TOKEN) if GITHUB_TOKEN else 0
+            
+            raw_gh = await _github_api_request(f"/contents/{BACKUP_FILE_PATH}?ref={BACKUP_BRANCH}")
+            res_debug["github_response_type"] = type(raw_gh).__name__
+            if isinstance(raw_gh, dict):
+                res_debug["has_content"] = "content" in raw_gh
+                res_debug["error_code"] = raw_gh.get("_error_code")
+                res_debug["error_msg"] = raw_gh.get("_error_msg")
+            
+            await restore_from_cloud()
+            
+            counts = {}
+            async with aiosqlite.connect(DB_PATH) as db:
+                for t in ["users", "groups", "group_members", "expenses", "user_cards"]:
+                    async with db.execute(f"SELECT COUNT(*) FROM {t}") as cur:
+                        counts[t] = (await cur.fetchone())[0]
+            res_debug["database_counts_after"] = counts
+            return web.json_response({"success": True, "debug": res_debug})
+        except Exception as e:
+            import traceback
+            return web.json_response({"success": False, "error": str(e), "trace": traceback.format_exc()}, status=500)
+
     app.router.add_get("/", lambda req: web.Response(text=_STATUS_HTML, content_type="text/html", charset="utf-8"))
     app.router.add_get("/health", lambda req: web.Response(text="OK"))
     app.router.add_get("/api/status", status_api_handler)
+    app.router.add_get("/api/restore", restore_api_handler)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
