@@ -13,3 +13,6 @@ class CardRegistrationStates(StatesGroup):
     waiting_for_card_number = State()
     waiting_for_bank_name = State()
 
+class FoodPickerStates(StatesGroup):
+    waiting_for_items = State()
+

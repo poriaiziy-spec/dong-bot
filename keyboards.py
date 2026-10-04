@@ -38,7 +38,8 @@ def group_dashboard_keyboard(group_id: int, is_creator: bool = False) -> InlineK
     """داشبورد و امکانات گروه دنگ"""
     keyboard = [
         [
-            InlineKeyboardButton(text="💸 ثبت هزینه جدید", callback_data=f"exp:add:{group_id}")
+            InlineKeyboardButton(text="💸 ثبت هزینه جدید", callback_data=f"exp:add:{group_id}"),
+            InlineKeyboardButton(text="🍕 انتخاب رندوم غذا", callback_data=f"food:start:{group_id}")
         ],
         [
             InlineKeyboardButton(text="📊 گزارش حساب‌ها", callback_data=f"grp:report:{group_id}"),
@@ -250,4 +251,33 @@ def cancel_keyboard(group_id: int | None = None) -> InlineKeyboardMarkup:
     target = f"grp:view:{group_id}" if group_id else "nav:main"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ انصراف", callback_data=target)]
+    ])
+
+
+def food_picker_keyboard(group_id: int, item_count: int) -> InlineKeyboardMarkup:
+    """کیبورد گردونه انتخاب غذا در مرحله دریافت گزینه‌ها"""
+    keyboard = []
+    if item_count >= 2:
+        keyboard.append([
+            InlineKeyboardButton(text=f"🎲 قرعه‌کشی کن! ({item_count} گزینه)", callback_data=f"food:spin:{group_id}")
+        ])
+    if item_count >= 1:
+        keyboard.append([
+            InlineKeyboardButton(text="🔄 پاک کردن لیست گزینه‌ها", callback_data=f"food:clear:{group_id}")
+        ])
+    keyboard.append([
+        InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def food_result_keyboard(group_id: int) -> InlineKeyboardMarkup:
+    """کیبورد نتیجه قرعه‌کشی غذا"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 یه بار دیگه قرعه بکش", callback_data=f"food:spin:{group_id}")],
+        [
+            InlineKeyboardButton(text="➕ افزودن گزینه جدید", callback_data=f"food:add_more:{group_id}"),
+            InlineKeyboardButton(text="🗑️ شروع مجدد (لیست جدید)", callback_data=f"food:clear:{group_id}")
+        ],
+        [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
     ])
