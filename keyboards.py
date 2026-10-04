@@ -57,14 +57,34 @@ def group_dashboard_keyboard(group_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
+def group_naming_choice_keyboard() -> InlineKeyboardMarkup:
+    """انتخاب نحوه نام‌گذاری گروه (رندوم خنده‌دار یا دستی)"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎲 اسم رندوم خنده‌دار (+18)", callback_data="grp:name:random")],
+        [InlineKeyboardButton(text="✍️ نوشتن اسم دلخواه خودم", callback_data="grp:name:custom")],
+        [InlineKeyboardButton(text="🔙 انصراف", callback_data="nav:my_groups")]
+    ])
+
+
+def group_naming_confirm_keyboard() -> InlineKeyboardMarkup:
+    """تأیید یا تغییر مجدد اسم رندوم پیشنهادی"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ تأیید و ساخت گروه با همین اسم", callback_data="grp:name:confirm")],
+        [InlineKeyboardButton(text="🔄 یه اسم رندوم دیگه پیشنهاد بده", callback_data="grp:name:random")],
+        [InlineKeyboardButton(text="✍️ خودم دستی می‌نویسم", callback_data="grp:name:custom")],
+        [InlineKeyboardButton(text="🔙 انصراف", callback_data="nav:my_groups")]
+    ])
+
+
 def payer_select_keyboard(group_id: int, members: list[dict], current_user_id: int) -> InlineKeyboardMarkup:
-    """انتخاب شخص پرداخت‌کننده"""
+    """انتخاب شخص پرداخت‌کننده (همراه با لقب خنده‌دار)"""
     keyboard = []
     for m in members:
         is_me = " (شما)" if m["id"] == current_user_id else ""
+        name_label = m.get("display_name", m["full_name"])
         keyboard.append([
             InlineKeyboardButton(
-                text=f"👤 {m['full_name']}{is_me}",
+                text=f"👤 {name_label}{is_me}",
                 callback_data=f"fsm:payer:{m['id']}"
             )
         ])
@@ -80,7 +100,7 @@ def shares_select_keyboard(
     selected_ids: set[int]
 ) -> InlineKeyboardMarkup:
     """
-    انتخاب افراد سهیم در دنگ (به‌صورت چندگزینه‌ای یا همه)
+    انتخاب افراد سهیم در دنگ (همراه با لقب خنده‌دار)
     """
     keyboard = [
         [
@@ -92,9 +112,10 @@ def shares_select_keyboard(
     for m in members:
         is_checked = m["id"] in selected_ids
         icon = "✅" if is_checked else "⬜"
+        name_label = m.get("display_name", m["full_name"])
         keyboard.append([
             InlineKeyboardButton(
-                text=f"{icon} {m['full_name']}",
+                text=f"{icon} {name_label}",
                 callback_data=f"fsm:share:toggle:{m['id']}"
             )
         ])

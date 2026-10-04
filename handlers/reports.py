@@ -46,7 +46,7 @@ async def handle_group_report(callback: CallbackQuery):
     ]
     
     for s in stats:
-        name = s["user"]["full_name"]
+        name = s["user"].get("display_name", s["user"]["full_name"])
         paid = format_amount(s["paid"])
         owed = format_amount(s["owed"])
         net = s["net"]
@@ -105,8 +105,8 @@ async def handle_settlement_calculation(callback: CallbackQuery):
         ]
         
         for idx, item in enumerate(settlements, 1):
-            payer_name = item["from_user"]["full_name"]
-            receiver_name = item["to_user"]["full_name"]
+            payer_name = item["from_user"].get("display_name", item["from_user"]["full_name"])
+            receiver_name = item["to_user"].get("display_name", item["to_user"]["full_name"])
             amt = format_amount(item["amount"])
             lines.append(f"{idx}️⃣ <b>{payer_name}</b> ➡️ باید <b>{amt}</b> به <b>{receiver_name}</b> بدهد.")
             

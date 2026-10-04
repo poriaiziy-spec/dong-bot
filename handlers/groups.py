@@ -8,6 +8,8 @@ import keyboards as kb
 from states import GroupCreationStates
 from helpers import format_amount
 
+from random_names import get_random_group_name
+
 router = Router()
 
 @router.callback_query(F.data == "nav:my_groups")
@@ -37,18 +39,51 @@ async def handle_my_groups(event: Message | CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "nav:new_group")
 @router.message(Command("newgroup"))
 async def handle_new_group_start(event: Message | CallbackQuery, state: FSMContext):
-    await state.set_state(GroupCreationStates.waiting_for_title)
+    await state.clear()
     text = (
-        "🏷️ لطفاً <b>نام گروه دنگ</b> را وارد کنید:\n"
-        "(مثلاً: سفر شمال 🌊، هم‌خونه‌ها 🏠، ناهار شرکت 🍔)"
+        "🏷️ <b>انتخاب نام برای گروه دنگ جدید:</b>\n\n"
+        "می‌توانید یک اسم رندوم خنده‌دار (+18) انتخاب کنید یا اسم دلخواه خودتان را بنویسید:"
     )
-    markup = kb.cancel_keyboard()
+    markup = kb.group_naming_choice_keyboard()
     
     if isinstance(event, CallbackQuery):
         await event.answer()
         await event.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
     else:
         await event.answer(text, parse_mode="HTML", reply_markup=markup)
+
+
+@router.callback_query(F.data == "grp:name:random")
+async def handle_random_group_name(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    random_name = get_random_group_name()
+    await state.update_data(suggested_title=random_name)
+    
+    text = (
+        "🎲 <b>اسم رندوم پیشنهادی (+18):</b>\n\n"
+        f"🔥 <b>«{random_name}»</b>\n\n"
+        "می‌خواهید گروه با همین نام ساخته شود یا یکی دیگر پیشنهاد دهم؟"
+    )
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.group_naming_confirm_keyboard())
+
+
+@router.callback_query(F.data == "grp:name:confirm")
+async def handle_confirm_random_name(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    await callback.answer()
+    data = await state.get_data()
+    title = data.get("suggested_title") or get_random_group_name()
+    await finish_group_creation(callback.message, callback.from_user, title, state, bot)
+
+
+@router.callback_query(F.data == "grp:name:custom")
+async def handle_custom_group_name_prompt(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(GroupCreationStates.waiting_for_title)
+    text = (
+        "✍️ لطفاً <b>نام گروه دنگ</b> را تایپ و ارسال کنید:\n"
+        "(مثلاً: سفر شمال 🌊، هم‌خونه‌ها 🏠، ناهار شرکت 🍔)"
+    )
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.cancel_keyboard())
 
 
 @router.message(GroupCreationStates.waiting_for_title)
@@ -58,25 +93,31 @@ async def handle_new_group_title(message: Message, state: FSMContext, bot: Bot):
         await message.answer("⚠️ لطفاً نامی بین ۲ تا ۶۰ کاراکتر وارد کنید:")
         return
 
-    user = message.from_user
+    await finish_group_creation(message, message.from_user, title, state, bot)
+
+
+async def finish_group_creation(msg_target: Message, user, title: str, state: FSMContext, bot: Bot):
     await db.upsert_user(user.id, user.username, user.full_name)
     group_id, invite_code = await db.create_group(title, user.id)
     await state.clear()
+
+    members = await db.get_group_members(group_id)
+    creator_nick = members[0].get("nickname", "رئیس") if members else "رئیس"
 
     bot_info = await bot.get_me()
     invite_link = f"https://t.me/{bot_info.username}?start=join_{invite_code}"
 
     text = (
-        f"✅ گروه <b>«{title}»</b> با موفقیت ساخته شد!\n\n"
+        f"✅ گروه <b>«{title}»</b> با موفقیت ساخته شد!\n"
+        f"👑 لقب شما در این گروه: <b>«{creator_nick}»</b>\n\n"
         f"🔗 <b>لینک دعوت اختصاصی گروه:</b>\n"
         f"<code>{invite_link}</code>\n\n"
-        "این لینک را برای همسفران یا دوستانتان بفرستید تا با زدن روی آن وارد گروه شوند."
+        "این لینک را برای دوستانتان بفرستید تا با یک کلیک و با لقب‌های خنده‌دار رندوم به گروه ملحق شوند!"
     )
-    await message.answer(
-        text,
-        parse_mode="HTML",
-        reply_markup=kb.group_dashboard_keyboard(group_id)
-    )
+    if hasattr(msg_target, "edit_text") and msg_target.from_user.is_bot:
+        await msg_target.edit_text(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group_id))
+    else:
+        await msg_target.answer(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group_id))
 
 
 @router.callback_query(F.data.startswith("grp:view:"))
@@ -96,13 +137,13 @@ async def handle_view_group(callback: CallbackQuery, state: FSMContext):
     active_expenses = await db.get_active_expenses(group_id)
     total_active_amount = sum(e["amount"] for e in active_expenses)
     
-    members_names = "، ".join([m["full_name"] for m in members])
+    members_lines = "\n".join([f"• {m['full_name']} ➡️ <b>{m.get('nickname', '')}</b>" for m in members])
     
     text = (
-        f"📁 گروه: <b>{group['title']}</b>\n"
-        f"👥 اعضا ({len(members)} نفر): {members_names}\n\n"
+        f"📁 گروه: <b>{group['title']}</b>\n\n"
+        f"👥 <b>اعضا و لقب‌های گروه ({len(members)} نفر):</b>\n{members_lines}\n\n"
         f"💰 کل هزینه‌های فعال این دوره: <b>{format_amount(total_active_amount)}</b>\n"
-        f"🧾 تعداد خریدهای تسویه نشده: <b>{len(active_expenses)}</b> مورد\n\n"
+        f"🧾 تعداد فاکتورهای تسویه نشده: <b>{len(active_expenses)}</b> مورد\n\n"
         "یکی از عملیات زیر را انتخاب کنید:"
     )
     

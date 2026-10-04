@@ -47,12 +47,18 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
         group = await db.get_group_by_code(invite_code)
         
         if group:
-            added = await db.add_group_member(group["id"], user.id)
+            added, nickname = await db.add_group_member(group["id"], user.id)
             members = await db.get_group_members(group["id"])
             if added:
-                msg = f"🎉 شما با موفقیت به گروه <b>«{group['title']}»</b> پیوستید!\nتعداد اعضای گروه: {len(members)} نفر"
+                msg = (
+                    f"🎉 شما با لقب اختصاصی <b>«{nickname}»</b> به گروه <b>«{group['title']}»</b> پیوستید! 🔞\n\n"
+                    f"👥 تعداد اعضای گروه: {len(members)} نفر"
+                )
             else:
-                msg = f"ℹ️ شما هم‌اکنون عضو گروه <b>«{group['title']}»</b> هستید.\nتعداد اعضای گروه: {len(members)} نفر"
+                msg = (
+                    f"ℹ️ شما هم‌اکنون با لقب <b>«{nickname}»</b> عضو گروه <b>«{group['title']}»</b> هستید.\n\n"
+                    f"👥 تعداد اعضای گروه: {len(members)} نفر"
+                )
             
             await message.answer(
                 msg,

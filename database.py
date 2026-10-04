@@ -1,6 +1,7 @@
 import aiosqlite
 import secrets
 from config import DB_PATH
+from random_names import get_random_member_nickname
 
 async def init_db():
     """ایجاد جداول دیتابیس در صورت عدم وجود"""
@@ -35,12 +36,19 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 group_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL,
+                nickname TEXT,
                 joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (group_id, user_id),
                 FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
             )
         """)
+
+        # مایگریشن برای دیتابیس‌های موجود
+        try:
+            await db.execute("ALTER TABLE group_members ADD COLUMN nickname TEXT;")
+        except Exception:
+            pass
 
         # جدول هزینه‌ها
         await db.execute("""
@@ -86,8 +94,10 @@ async def upsert_user(user_id: int, username: str | None, full_name: str):
 
 
 async def create_group(title: str, created_by: int) -> tuple[int, str]:
-    """ساخت گروه دنگ جدید و عضویت سازنده در آن"""
+    """ساخت گروه دنگ جدید و عضویت سازنده در آن همراه با لقب رندوم"""
     invite_code = secrets.token_hex(4)  # کد ۸ کاراکتری یکتا
+    creator_nick = get_random_member_nickname()
+    
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("""
             INSERT INTO groups (invite_code, title, created_by)
@@ -95,11 +105,11 @@ async def create_group(title: str, created_by: int) -> tuple[int, str]:
         """, (invite_code, title, created_by))
         group_id = cursor.lastrowid
 
-        # افزودن خود سازنده به گروه
+        # افزودن خود سازنده به گروه همراه با لقب رندوم
         await db.execute("""
-            INSERT OR IGNORE INTO group_members (group_id, user_id)
-            VALUES (?, ?)
-        """, (group_id, created_by))
+            INSERT OR IGNORE INTO group_members (group_id, user_id, nickname)
+            VALUES (?, ?, ?)
+        """, (group_id, created_by, creator_nick))
 
         await db.commit()
         return group_id, invite_code
@@ -123,18 +133,32 @@ async def get_group_by_id(group_id: int) -> dict | None:
             return dict(row) if row else None
 
 
-async def add_group_member(group_id: int, user_id: int) -> bool:
-    """افزودن کاربر به گروه (در صورتی که قبلاً عضو نبوده باشد)"""
+async def add_group_member(group_id: int, user_id: int) -> tuple[bool, str]:
+    """
+    افزودن کاربر به گروه همراه با اختصاص لقب رندوم خنده‌دار.
+    خروجی: (آیا تازه عضو شده؟ , لقب کاربر)
+    """
     async with aiosqlite.connect(DB_PATH) as db:
-        try:
-            await db.execute("""
-                INSERT INTO group_members (group_id, user_id)
-                VALUES (?, ?)
-            """, (group_id, user_id))
-            await db.commit()
-            return True
-        except aiosqlite.IntegrityError:
-            return False  # از قبل عضو بوده
+        # بررسی عضویت قبلی
+        async with db.execute("SELECT nickname FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, user_id)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                existing_nick = row[0]
+                if not existing_nick:
+                    new_nick = get_random_member_nickname()
+                    await db.execute("UPDATE group_members SET nickname = ? WHERE group_id = ? AND user_id = ?", (new_nick, group_id, user_id))
+                    await db.commit()
+                    return False, new_nick
+                return False, existing_nick
+
+        # عضو جدید
+        nickname = get_random_member_nickname()
+        await db.execute("""
+            INSERT INTO group_members (group_id, user_id, nickname)
+            VALUES (?, ?, ?)
+        """, (group_id, user_id, nickname))
+        await db.commit()
+        return True, nickname
 
 
 async def get_user_groups(user_id: int) -> list[dict]:
@@ -154,18 +178,29 @@ async def get_user_groups(user_id: int) -> list[dict]:
 
 
 async def get_group_members(group_id: int) -> list[dict]:
-    """لیست اعضای یک گروه همراه با نام و یوزرنیم"""
+    """لیست اعضای یک گروه همراه با نام، یوزرنیم و لقب اختصاصی"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
-            SELECT u.id, u.full_name, u.username, gm.joined_at
+            SELECT u.id, u.full_name, u.username, gm.nickname, gm.joined_at
             FROM group_members gm
             JOIN users u ON gm.user_id = u.id
             WHERE gm.group_id = ?
             ORDER BY gm.joined_at ASC
         """, (group_id,)) as cursor:
             rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
+            members = []
+            for r in rows:
+                item = dict(r)
+                nick = item.get("nickname")
+                if not nick:
+                    nick = get_random_member_nickname()
+                    await db.execute("UPDATE group_members SET nickname = ? WHERE group_id = ? AND user_id = ?", (nick, group_id, item["id"]))
+                    await db.commit()
+                    item["nickname"] = nick
+                item["display_name"] = f"{item['full_name']} ({nick})"
+                members.append(item)
+            return members
 
 
 async def add_expense(group_id: int, payer_id: int, title: str, amount: int, shares: dict[int, int]) -> int:
