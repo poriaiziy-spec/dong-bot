@@ -4,7 +4,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 import database as db
 import keyboards as kb
 from calculator import calculate_group_balances
-from helpers import format_amount
+from helpers import format_amount, safe
 from tones import (
     render_reminder_msg,
     render_payment_notice,
@@ -45,7 +45,7 @@ async def handle_group_report(callback: CallbackQuery):
     stats = calc_res["member_stats"]
     
     lines = [
-        f"📊 <b>گزارش کامل حساب‌های گروه «{group['title']}»</b>\n",
+        f"📊 <b>گزارش کامل حساب‌های گروه «{safe(group['title'])}»</b>\n",
         f"💰 کل هزینه‌های دوره جاری: <b>{format_amount(total_spent)}</b>",
         f"🧾 تعداد فاکتورها: <b>{len(active_expenses)}</b> مورد\n",
         "👥 <b>وضعیت اعضا:</b>"
@@ -114,8 +114,8 @@ async def handle_settlement_calculation(callback: CallbackQuery):
         for idx, item in enumerate(settlements, 1):
             debtor = item["from_user"]
             creditor = item["to_user"]
-            debtor_name = debtor.get("display_name", debtor["full_name"])
-            creditor_name = creditor.get("display_name", creditor["full_name"])
+            debtor_name = safe(debtor.get("display_name", debtor["full_name"]))
+            creditor_name = safe(creditor.get("display_name", creditor["full_name"]))
             amt = format_amount(item["amount"])
             
             card_num = creditor.get("card_number")

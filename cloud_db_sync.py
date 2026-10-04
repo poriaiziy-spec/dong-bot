@@ -107,9 +107,9 @@ async def restore_from_cloud():
             
             for u in dump.get("users", []):
                 await db.execute("""
-                    INSERT OR REPLACE INTO users (id, username, full_name, card_number, bank_name, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (u["id"], u.get("username"), u["full_name"], u.get("card_number"), u.get("bank_name"), u.get("created_at")))
+                    INSERT OR REPLACE INTO users (id, username, full_name, card_number, bank_name, is_active, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (u["id"], u.get("username"), u["full_name"], u.get("card_number"), u.get("bank_name"), u.get("is_active", 1), u.get("created_at")))
                 
             for g in dump.get("groups", []):
                 await db.execute("""
@@ -147,10 +147,28 @@ async def restore_from_cloud():
     except Exception as e:
         print(f"Restore warning: {e}")
 
+_debounce_task: asyncio.Task | None = None
+_DEBOUNCE_SECONDS = 30  # Wait 30s after last write before syncing
+
 def schedule_cloud_backup():
-    """اجرای بکاپ‌گیری در پس‌زمینه بدون معطل کردن کاربر"""
+    """اجرای بکاپ‌گیری در پس‌زمینه با تأخیر هوشمند (debounce) جهت کاهش درخواست‌ها به گیت‌هاب"""
+    global _debounce_task
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(backup_to_cloud())
-    except Exception:
-        pass
+    except RuntimeError:
+        return
+
+    # Cancel previous pending backup if any
+    if _debounce_task and not _debounce_task.done():
+        _debounce_task.cancel()
+
+    async def _debounced():
+        try:
+            await asyncio.sleep(_DEBOUNCE_SECONDS)
+            await backup_to_cloud()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"Debounced backup error: {e}")
+
+    _debounce_task = loop.create_task(_debounced())

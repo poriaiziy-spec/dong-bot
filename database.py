@@ -50,7 +50,8 @@ async def init_db():
             "ALTER TABLE group_members ADD COLUMN nickname TEXT;",
             "ALTER TABLE users ADD COLUMN card_number TEXT;",
             "ALTER TABLE users ADD COLUMN bank_name TEXT;",
-            "ALTER TABLE groups ADD COLUMN tone TEXT DEFAULT 'friendly';"
+            "ALTER TABLE groups ADD COLUMN tone TEXT DEFAULT 'friendly';",
+            "ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1;"
         ]:
             try:
                 await db.execute(col_sql)
@@ -103,11 +104,12 @@ async def upsert_user(user_id: int, username: str | None, full_name: str):
     """ثبت یا به‌روزرسانی اطلاعات کاربر"""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            INSERT INTO users (id, username, full_name)
-            VALUES (?, ?, ?)
+            INSERT INTO users (id, username, full_name, is_active)
+            VALUES (?, ?, ?, 1)
             ON CONFLICT(id) DO UPDATE SET
                 username = excluded.username,
-                full_name = excluded.full_name
+                full_name = excluded.full_name,
+                is_active = 1
         """, (user_id, username, full_name))
         await db.commit()
         schedule_cloud_backup()
@@ -215,9 +217,23 @@ async def delete_group(group_id: int, creator_id: int) -> bool:
 async def get_all_user_ids() -> list[int]:
     """دریافت شناسه‌های تمام کاربران ربات جهت ارسال پیام صبحگاهی"""
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT id FROM users") as cursor:
+        async with db.execute("SELECT id FROM users WHERE is_active != 0 OR is_active IS NULL") as cursor:
             rows = await cursor.fetchall()
             return [r[0] for r in rows]
+
+
+async def mark_user_inactive(user_id: int):
+    """غیرفعال کردن کاربری که ربات را بلاک کرده"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET is_active = 0 WHERE id = ?", (user_id,))
+        await db.commit()
+
+
+async def mark_user_active(user_id: int):
+    """فعال کردن مجدد کاربر هنگام استفاده از ربات"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET is_active = 1 WHERE id = ?", (user_id,))
+        await db.commit()
 
 
 async def get_recent_quote_indices(limit: int = 35) -> list[int]:

@@ -6,7 +6,8 @@ from aiogram.fsm.context import FSMContext
 import database as db
 import keyboards as kb
 from states import GroupCreationStates
-from helpers import format_amount
+from helpers import format_amount, safe
+from calculator import calculate_group_balances
 
 from random_names import get_random_group_name
 from tones import TONE_NAMES, msg_group_dashboard
@@ -62,7 +63,7 @@ async def handle_random_group_name(callback: CallbackQuery, state: FSMContext):
     
     text = (
         "🎲 <b>اسم رندوم پیشنهادی (+18):</b>\n\n"
-        f"🔥 <b>«{random_name}»</b>\n\n"
+        f"🔥 <b>«{safe(random_name)}»</b>\n\n"
         "می‌خواهید گروه با همین نام ساخته شود یا یکی دیگر پیشنهاد دهم؟"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.group_naming_confirm_keyboard())
@@ -109,8 +110,8 @@ async def finish_group_creation(msg_target: Message, user, title: str, state: FS
     invite_link = f"https://t.me/{bot_info.username}?start=join_{invite_code}"
 
     text = (
-        f"✅ گروه <b>«{title}»</b> با موفقیت ساخته شد!\n"
-        f"👑 لقب شما در این گروه: <b>«{creator_nick}»</b>\n\n"
+        f"✅ گروه <b>«{safe(title)}»</b> با موفقیت ساخته شد!\n"
+        f"👑 لقب شما در این گروه: <b>«{safe(creator_nick)}»</b>\n\n"
         f"🔗 <b>لینک دعوت اختصاصی گروه:</b>\n"
         f"<code>{invite_link}</code>\n\n"
         "این لینک را برای دوستانتان بفرستید تا با یک کلیک و با لقب‌های خنده‌دار رندوم به گروه ملحق شوند!"
@@ -141,7 +142,7 @@ async def handle_view_group(callback: CallbackQuery, state: FSMContext):
     current_tone = await db.get_group_tone(group_id)
     current_tone_name = TONE_NAMES.get(current_tone, "😊 دوستانه و خودمونی")
     
-    members_lines = "\n".join([f"• {m['full_name']} ➡️ <b>{m.get('nickname', '')}</b>" for m in members])
+    members_lines = "\n".join([f"• {safe(m['full_name'])} ➡️ <b>{safe(m.get('nickname', ''))}</b>" for m in members])
     
     text = msg_group_dashboard(
         tone=current_tone,
@@ -187,7 +188,7 @@ async def handle_members_manage(callback: CallbackQuery):
         ])
     else:
         text = (
-            f"👑 <b>مدیریت اعضای گروه «{group['title']}»:</b>\n\n"
+            f"👑 <b>مدیریت اعضای گروه «{safe(group['title'])}»:</b>\n\n"
             "روی هر عضوی که می‌خواهید از گروه حذف شود کلیک کنید:"
         )
         markup = kb.members_kick_keyboard(group_id, members, group["created_by"])
@@ -209,11 +210,26 @@ async def handle_kick_confirm(callback: CallbackQuery):
     await callback.answer()
     members = await db.get_group_members(group_id)
     target = next((m for m in members if m["id"] == member_id), None)
-    target_name = target.get("display_name", target["full_name"]) if target else "این کاربر"
+    target_name = safe(target.get("display_name", target["full_name"])) if target else "این کاربر"
+    
+    # بررسی بدهی یا طلب تسویه‌نشده این عضو
+    balance_warning = ""
+    active_expenses = await db.get_active_expenses(group_id)
+    if active_expenses:
+        calc = calculate_group_balances(members, active_expenses)
+        member_stat = next((s for s in calc["member_stats"] if s["user"]["id"] == member_id), None)
+        if member_stat and member_stat["net"] != 0:
+            from helpers import format_amount
+            net = member_stat["net"]
+            if net > 0:
+                balance_warning = f"\n\n💰 <b>توجه:</b> این عضو <b>{format_amount(net)} طلبکار</b> است و هنوز حسابش تسویه نشده!"
+            else:
+                balance_warning = f"\n\n💰 <b>توجه:</b> این عضو <b>{format_amount(-net)} بدهکار</b> است و هنوز حسابش تسویه نشده!"
     
     text = (
         f"⚠️ <b>تأییدیه اخراج عضو:</b>\n\n"
         f"آیا مطمئن هستید که می‌خواهید <b>{target_name}</b> را از گروه اخراج کنید؟"
+        f"{balance_warning}"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.kick_confirm_keyboard(group_id, member_id))
 
@@ -239,7 +255,7 @@ async def handle_kick_do(callback: CallbackQuery, bot: Bot):
     try:
         await bot.send_message(
             member_id,
-            f"ℹ️ شما توسط سرگروه از گروه <b>«{group['title']}»</b> حذف شدید.",
+            f"ℹ️ شما توسط سرگروه از گروه <b>«{safe(group['title'])}»</b> حذف شدید.",
             parse_mode="HTML"
         )
     except Exception:
@@ -254,7 +270,7 @@ async def handle_kick_do(callback: CallbackQuery, bot: Bot):
             [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
         ])
     else:
-        text = f"👑 <b>مدیریت اعضای گروه «{group['title']}»:</b>"
+        text = f"👑 <b>مدیریت اعضای گروه «{safe(group['title'])}»:</b>"
         markup = kb.members_kick_keyboard(group_id, members_updated, group["created_by"])
         
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
@@ -274,7 +290,7 @@ async def handle_delete_group_confirm(callback: CallbackQuery):
         
     await callback.answer()
     text = (
-        f"⚠️ <b>هشدار حذف کامل گروه «{group['title']}»:</b>\n\n"
+        f"⚠️ <b>هشدار حذف کامل گروه «{safe(group['title'])}»:</b>\n\n"
         "آیا کاملاً مطمئن هستید که می‌خواهید این گروه را حذف کنید؟\n\n"
         "• تمام سوابق، اعضا، لقب‌ها، دنگ‌ها و هزینه‌های این گروه به طور کامل پاک خواهند شد و این عملیات برگشت‌پذیر نیست!"
     )
@@ -360,7 +376,7 @@ async def handle_group_invite(callback: CallbackQuery, bot: Bot):
     invite_link = f"https://t.me/{bot_info.username}?start=join_{group['invite_code']}"
 
     text = (
-        f"🔗 <b>لینک دعوت به گروه «{group['title']}»:</b>\n\n"
+        f"🔗 <b>لینک دعوت به گروه «{safe(group['title'])}»:</b>\n\n"
         f"<code>{invite_link}</code>\n\n"
         "💡 <i>کافی است این لینک را برای دوستانتان بفرستید. به محض اینکه استارت را بزنند، به عضویت گروه در می‌آیند.</i>"
     )

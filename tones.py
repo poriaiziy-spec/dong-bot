@@ -1,4 +1,7 @@
+import html
 from helpers import format_amount
+
+def _s(t): return html.escape(str(t)) if t else ""
 
 TONE_NAMES = {
     "formal": "👔 رسمی و اداری",
@@ -8,6 +11,7 @@ TONE_NAMES = {
 
 # ----------------- پیام‌های داشبورد گروه -----------------
 def msg_group_dashboard(tone: str, title: str, member_count: int, member_lines: str, total_amount: int, expenses_count: int, tone_name: str) -> str:
+    title = _s(title)
     amt_str = format_amount(total_amount)
     
     if tone == "formal":
@@ -48,6 +52,7 @@ def msg_expense_title_prompt(tone: str) -> str:
         return "📌 <b>بابت چی خرج کردی داداش؟</b>\nیه اسم کوتاه بنویس ببینم (مثلاً: شام دیشب، بنزین ماشین، خرید سوپرمارکت):"
 
 def msg_expense_amount_prompt(tone: str, title: str) -> str:
+    title = _s(title)
     if tone == "formal":
         return f"🏷️ <b>شرح هزینه:</b> {title}\n\n💵 <b>مبلغ کل:</b>\nلطفاً مبلغ کل فاکتور را به تومان مرقوم فرمایید (مثال: 450,000 یا ۴۵۰ هزار):"
     elif tone == "toxic":
@@ -56,6 +61,7 @@ def msg_expense_amount_prompt(tone: str, title: str) -> str:
         return f"🏷️ <b>بابت:</b> {title}\n\n💵 <b>چقدر خرج برداشته مشتی؟</b>\nمبلغ کل رو به تومان بفرست (مثلاً: 450000 یا ۴۵۰ هزار تومان):"
 
 def msg_expense_payer_prompt(tone: str, title: str, amt_str: str) -> str:
+    title = _s(title)
     if tone == "formal":
         return f"🏷️ <b>هزینه:</b> {title}\n💰 <b>مبلغ:</b> {amt_str}\n\n👤 <b>شخص پرداخت‌کننده:</b>\nلطفاً عضوی که وجه فوق را تأمین نموده‌اند انتخاب فرمایید:"
     elif tone == "toxic":
@@ -64,6 +70,8 @@ def msg_expense_payer_prompt(tone: str, title: str, amt_str: str) -> str:
         return f"🏷️ <b>بابت:</b> {title}\n💰 <b>مبلغ:</b> {amt_str}\n\n👤 <b>کی دست به جیب شده؟</b>\nشخصی که حساب کرده رو انتخاب کن رفیق:"
 
 def msg_expense_shares_prompt(tone: str, title: str, amt_str: str, payer_name: str) -> str:
+    title = _s(title)
+    payer_name = _s(payer_name)
     if tone == "formal":
         return (
             f"🏷️ <b>هزینه:</b> {title}\n💰 <b>مبلغ:</b> {amt_str}\n👤 <b>پرداخت‌کننده:</b> {payer_name}\n\n"
@@ -81,6 +89,9 @@ def msg_expense_shares_prompt(tone: str, title: str, amt_str: str, payer_name: s
         )
 
 def msg_expense_saved(tone: str, title: str, amt_str: str, payer_name: str, count: int, base_share_str: str, involved_text: str) -> str:
+    title = _s(title)
+    payer_name = _s(payer_name)
+    involved_text = _s(involved_text)
     if tone == "formal":
         return (
             f"✅ <b>هزینه با موفقیت در دفاتر ثبت گردید.</b>\n\n"
@@ -111,6 +122,7 @@ def msg_expense_saved(tone: str, title: str, amt_str: str, payer_name: str, coun
 
 # ----------------- پیام‌های گزارش و تسویه حساب -----------------
 def render_settlement_title(tone: str, group_title: str) -> str:
+    group_title = _s(group_title)
     if tone == "formal":
         return f"⚖️ <b>صورت‌حساب نهایی و دستورالعمل تسویه گروه «{group_title}»</b>\n"
     elif tone == "toxic":
@@ -119,6 +131,8 @@ def render_settlement_title(tone: str, group_title: str) -> str:
         return f"⚖️ <b>حساب کتاب تسویه دنگ‌های گروه «{group_title}»</b>\n"
 
 def render_reminder_msg(tone: str, creditor_name: str, debtor_name: str, amount: int, card_info: str) -> str:
+    creditor_name = _s(creditor_name)
+    debtor_name = _s(debtor_name)
     amt_str = format_amount(amount)
     if tone == "formal":
         return (
@@ -144,6 +158,8 @@ def render_reminder_msg(tone: str, creditor_name: str, debtor_name: str, amount:
         )
 
 def render_payment_notice(tone: str, debtor_name: str, creditor_name: str, amount: int) -> str:
+    debtor_name = _s(debtor_name)
+    creditor_name = _s(creditor_name)
     amt_str = format_amount(amount)
     if tone == "formal":
         return (
@@ -168,6 +184,7 @@ def render_payment_notice(tone: str, debtor_name: str, creditor_name: str, amoun
 
 # ----------------- پیام‌های صفر کردن و گزارش خالی -----------------
 def render_no_expenses_msg(tone: str, title: str) -> str:
+    title = _s(title)
     if tone == "formal":
         return (
             f"📊 <b>گزارش مالی گروه «{title}»:</b>\n\n"
@@ -188,6 +205,7 @@ def render_no_expenses_msg(tone: str, title: str) -> str:
         )
 
 def render_all_settled_msg(tone: str, title: str) -> str:
+    title = _s(title)
     prefix = render_settlement_title(tone, title)
     if tone == "formal":
         return (
@@ -209,6 +227,7 @@ def render_all_settled_msg(tone: str, title: str) -> str:
         )
 
 def msg_zero_confirm(tone: str, title: str) -> str:
+    title = _s(title)
     if tone == "formal":
         return (
             f"⚠️ <b>تأییدیه بستن دوره مالی گروه «{title}»</b>\n\n"
@@ -234,6 +253,7 @@ def msg_zero_confirm(tone: str, title: str) -> str:
         )
 
 def msg_zero_done(tone: str, title: str, settled_count: int) -> str:
+    title = _s(title)
     if tone == "formal":
         return (
             f"🎉 <b>دوره مالی گروه «{title}» با موفقیت مختومه و تسویه گردید.</b>\n\n"
@@ -253,6 +273,8 @@ def msg_zero_done(tone: str, title: str, settled_count: int) -> str:
 
 # ----------------- پیام‌های انتخاب رندوم غذا -----------------
 def msg_food_picker_intro(tone: str, group_title: str, items: list[str]) -> str:
+    group_title = _s(group_title)
+    if items: items = [_s(x) for x in items]
     if not items:
         if tone == "formal":
             return (
@@ -297,6 +319,8 @@ def msg_food_picker_intro(tone: str, group_title: str, items: list[str]) -> str:
             )
 
 def msg_food_winner(tone: str, group_title: str, winner: str, items_count: int) -> str:
+    group_title = _s(group_title)
+    winner = _s(winner)
     if tone == "formal":
         return (
             f"🎲 <b>نتیجه قرعه‌کشی و انتخاب رندوم غذا:</b>\n"

@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 import database as db
 import keyboards as kb
 from states import ExpenseCreationStates
-from helpers import clean_amount_input, format_amount
+from helpers import clean_amount_input, format_amount, safe
 from tones import (
     msg_expense_title_prompt,
     msg_expense_amount_prompt,
@@ -213,13 +213,13 @@ async def handle_expense_history(callback: CallbackQuery):
     group = await db.get_group_by_id(group_id)
     
     if not history:
-        text = f"📜 هنوز هیچ هزینه‌ای برای گروه <b>«{group['title']}»</b> ثبت نشده است."
+        text = f"📜 هنوز هیچ هزینه‌ای برای گروه <b>«{safe(group['title'])}»</b> ثبت نشده است."
         markup = kb.InlineKeyboardMarkup(inline_keyboard=[
             [kb.InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
         ])
     else:
         text = (
-            f"📜 <b>تاریخچه هزینه‌های گروه «{group['title']}»:</b>\n"
+            f"📜 <b>تاریخچه هزینه‌های گروه «{safe(group['title'])}»:</b>\n"
             "برای مشاهده جزئیات یا حذف هر هزینه، روی آن کلیک کنید:\n"
             "(علامت ✅: تسویه شده / علامت ⏳: فعال در این دوره)"
         )
@@ -250,7 +250,7 @@ async def handle_view_single_expense(callback: CallbackQuery):
     status = "تسویه شده ✅" if expense.get("settled") else "فعال در دوره جاری ⏳"
     text = (
         f"🔍 <b>جزئیات هزینه:</b>\n\n"
-        f"🏷️ بابت: <b>{expense['title']}</b>\n"
+        f"🏷️ بابت: <b>{safe(expense['title'])}</b>\n"
         f"💰 مبلغ: <b>{format_amount(expense['amount'])}</b>\n"
         f"👤 پرداخت‌کننده: <b>{expense.get('payer_name', 'نامشخص')}</b>\n"
         f"📅 تاریخ: {expense.get('created_at', '')}\n"
@@ -279,12 +279,12 @@ async def handle_delete_expense(callback: CallbackQuery):
     history = await db.get_group_history(group_id, limit=15)
     group = await db.get_group_by_id(group_id)
     if not history:
-        text = f"📜 هنوز هیچ هزینه‌ای برای گروه <b>«{group['title']}»</b> ثبت نشده است."
+        text = f"📜 هنوز هیچ هزینه‌ای برای گروه <b>«{safe(group['title'])}»</b> ثبت نشده است."
         markup = kb.InlineKeyboardMarkup(inline_keyboard=[
             [kb.InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
         ])
     else:
-        text = f"📜 <b>تاریخچه هزینه‌های گروه «{group['title']}»:</b>"
+        text = f"📜 <b>تاریخچه هزینه‌های گروه «{safe(group['title'])}»:</b>"
         markup = kb.expense_history_keyboard(history, group_id)
         
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)

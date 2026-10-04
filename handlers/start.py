@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 
 import database as db
 import keyboards as kb
+from helpers import safe
 
 router = Router()
 
@@ -51,12 +52,12 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
             members = await db.get_group_members(group["id"])
             if added:
                 msg = (
-                    f"🎉 شما با لقب اختصاصی <b>«{nickname}»</b> به گروه <b>«{group['title']}»</b> پیوستید! 🔞\n\n"
+                    f"🎉 شما با لقب اختصاصی <b>«{safe(nickname)}»</b> به گروه <b>«{safe(group['title'])}»</b> پیوستید! 🔞\n\n"
                     f"👥 تعداد اعضای گروه: {len(members)} نفر"
                 )
             else:
                 msg = (
-                    f"ℹ️ شما هم‌اکنون با لقب <b>«{nickname}»</b> عضو گروه <b>«{group['title']}»</b> هستید.\n\n"
+                    f"ℹ️ شما هم‌اکنون با لقب <b>«{safe(nickname)}»</b> عضو گروه <b>«{safe(group['title'])}»</b> هستید.\n\n"
                     f"👥 تعداد اعضای گروه: {len(members)} نفر"
                 )
             
@@ -70,7 +71,7 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
             await message.answer("⚠️ لینک دعوت نامعتبر است یا گروه منقضی شده است.")
 
     welcome_text = (
-        f"سلام <b>{user.full_name}</b> عزیز، خیلی خوش اومدی! 🌺\n\n"
+        f"سلام <b>{safe(user.full_name)}</b> عزیز، خیلی خوش اومدی! 🌺\n\n"
         "به ربات هوشمند محاسبه دنگ و حساب‌کشی خوش اومدی.\n"
         "با این ربات دیگه هیچ حسابی گم نمیشه و آخر هر سفر یا دورهمی، با کمترین تعداد تراکنش حساب‌ها صاف میشه!\n\n"
         "🎭 <b>امکان ویژه:</b> می‌تونی لحن ربات رو برای هر گروه بین <b>رسمی</b>، <b>دوستانه و خودمونی</b> یا <b>بی‌ادب و خفن (+18)</b> تنظیم کنی تا با هر سبکی که دوست دارید کل‌کل کنه و یادآوری بفرسته!\n\n"
@@ -104,7 +105,7 @@ async def handle_nav_main(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     user = callback.from_user
     welcome_text = (
-        f"سلام <b>{user.full_name}</b> عزیز! 🌺\n\n"
+        f"سلام <b>{safe(user.full_name)}</b> عزیز! 🌺\n\n"
         "یکی از گزینه‌های زیر را انتخاب کنید:"
     )
     await callback.message.edit_text(

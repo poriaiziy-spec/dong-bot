@@ -1,4 +1,9 @@
 import re
+import html
+
+def safe(text: str) -> str:
+    """Escape HTML special characters for safe Telegram message rendering"""
+    return html.escape(str(text)) if text else ""
 
 # تبدیل ارقام فارسی و عربی به انگلیسی
 PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹"

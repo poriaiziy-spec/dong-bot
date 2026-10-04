@@ -89,7 +89,9 @@ def format_cafe_quote_message(quote: str) -> str:
     )
 
 async def broadcast_daily_quote(bot: Bot) -> int:
-    """ارسال پیام صبحگاهی کافه‌ای به تمام کاربران عضو ربات بدون تکرار"""
+    """ارسال پیام صبحگاهی کافه‌ای به تمام کاربران فعال ربات بدون تکرار"""
+    from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest, TelegramRetryAfter
+
     user_ids = await db.get_all_user_ids()
     if not user_ids:
         return 0
@@ -106,8 +108,23 @@ async def broadcast_daily_quote(bot: Bot) -> int:
             await bot.send_message(uid, text, parse_mode="HTML")
             sent_count += 1
             await asyncio.sleep(0.05)  # جلوگیری از محدودیت Flood تلگرام
-        except Exception:
-            pass
+        except TelegramForbiddenError:
+            # کاربر ربات را بلاک کرده - از لیست ارسال حذف می‌شود
+            logger.info(f"کاربر {uid} ربات را بلاک کرده، غیرفعال می‌شود.")
+            await db.mark_user_inactive(uid)
+        except TelegramRetryAfter as e:
+            # Flood control - wait and retry
+            logger.warning(f"Flood control: waiting {e.retry_after}s")
+            await asyncio.sleep(e.retry_after + 1)
+            try:
+                await bot.send_message(uid, text, parse_mode="HTML")
+                sent_count += 1
+            except Exception:
+                pass
+        except TelegramBadRequest as e:
+            logger.warning(f"Bad request for user {uid}: {e}")
+        except Exception as e:
+            logger.warning(f"خطا در ارسال پیام به {uid}: {e}")
 
     logger.info(f"💌 یادداشت کافه‌ای ۹ صبح (شماره {quote_idx}) برای {sent_count} کاربر با موفقیت ارسال شد.")
     return sent_count
