@@ -111,7 +111,7 @@ async def finish_group_creation(msg_target: Message, user, title: str, state: FS
 
     text = (
         f"🎉 دورهمی <b>«{safe(title)}»</b> با موفقیت در <b>کافه دنگ</b> ایجاد شد!\n"
-        f"👑 لقب شما در این گروه: <b>«{safe(creator_nick)}»</b>\n\n"
+        f"👤 نام شما در این گروه: <b>«{safe(creator_nick)}»</b>\n\n"
         "💌 <b>کارت دعوت ورود اعضا:</b>\n"
         f"👉 <a href=\"{invite_link}\"><b>[ ☕ برای ورود و عضویت در گروه لمس کنید ]</b></a>\n\n"
         "💡 <i>از داخل منوی گروه، دکمه «💌 کارت دعوت اعضا» را بزنید تا کارت شیک و آماده فوروارد برای دوستانتان تولید شود!</i>"
@@ -142,7 +142,11 @@ async def handle_view_group(callback: CallbackQuery, state: FSMContext):
     current_tone = await db.get_group_tone(group_id)
     current_tone_name = TONE_NAMES.get(current_tone, "😊 دوستانه و خودمونی")
     
-    members_lines = "\n".join([f"• {safe(m['full_name'])} ➡️ <b>{safe(m.get('nickname', ''))}</b>" for m in members])
+    members_lines = "\n".join([
+        f"• <b>{safe(m.get('nickname', m['full_name']))}</b>" + 
+        (f" <i>({safe(m['full_name'])})</i>" if m.get('nickname') and m.get('nickname') != m['full_name'] else "")
+        for m in members
+    ])
     
     text = msg_group_dashboard(
         tone=current_tone,

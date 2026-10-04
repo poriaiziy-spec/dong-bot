@@ -16,3 +16,7 @@ class CardRegistrationStates(StatesGroup):
 class FoodPickerStates(StatesGroup):
     waiting_for_items = State()
 
+class NamePromptStates(StatesGroup):
+    waiting_for_name = State()
+    waiting_for_confirm = State()
+

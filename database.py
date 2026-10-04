@@ -3,6 +3,7 @@ import secrets
 from config import DB_PATH
 from random_names import get_random_member_nickname
 from cloud_db_sync import restore_from_cloud, schedule_cloud_backup
+from name_utils import guess_meaningful_name
 
 async def init_db():
     """ایجاد جداول دیتابیس در صورت عدم وجود"""
@@ -51,7 +52,8 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN card_number TEXT;",
             "ALTER TABLE users ADD COLUMN bank_name TEXT;",
             "ALTER TABLE groups ADD COLUMN tone TEXT DEFAULT 'friendly';",
-            "ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1;"
+            "ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1;",
+            "ALTER TABLE users ADD COLUMN calling_name TEXT;"
         ]:
             try:
                 await db.execute(col_sql)
@@ -126,25 +128,58 @@ async def init_db():
     await restore_from_cloud()
 
 
-async def upsert_user(user_id: int, username: str | None, full_name: str):
-    """ثبت یا به‌روزرسانی اطلاعات کاربر"""
+async def get_user_calling_name(user_id: int) -> str | None:
+    """دریافت نام صدا زدن معنادار کاربر"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT calling_name, full_name, username FROM users WHERE id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                if row[0]:
+                    return row[0]
+                guessed = guess_meaningful_name(row[1], None, row[2])
+                if guessed:
+                    await db.execute("UPDATE users SET calling_name = ? WHERE id = ?", (guessed, user_id))
+                    await db.commit()
+                    return guessed
+            return None
+
+
+async def set_user_calling_name(user_id: int, name: str):
+    """تنظیم و ذخیره نام صدا زدن کاربر و به‌روزرسانی در تمام گروه‌ها"""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            INSERT INTO users (id, username, full_name, is_active)
+            INSERT INTO users (id, full_name, calling_name, is_active)
             VALUES (?, ?, ?, 1)
+            ON CONFLICT(id) DO UPDATE SET calling_name = excluded.calling_name, is_active = 1
+        """, (user_id, name, name))
+        await db.execute("UPDATE group_members SET nickname = ? WHERE user_id = ?", (name, user_id))
+        await db.commit()
+        schedule_cloud_backup()
+
+
+async def upsert_user(user_id: int, username: str | None, full_name: str, calling_name: str | None = None):
+    """ثبت یا به‌روزرسانی اطلاعات کاربر به همراه نام معنادار"""
+    if not calling_name:
+        calling_name = guess_meaningful_name(full_name, None, username)
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO users (id, username, full_name, calling_name, is_active)
+            VALUES (?, ?, ?, ?, 1)
             ON CONFLICT(id) DO UPDATE SET
                 username = excluded.username,
                 full_name = excluded.full_name,
+                calling_name = COALESCE(users.calling_name, excluded.calling_name),
                 is_active = 1
-        """, (user_id, username, full_name))
+        """, (user_id, username, full_name, calling_name))
         await db.commit()
         schedule_cloud_backup()
 
 
 async def create_group(title: str, created_by: int) -> tuple[int, str]:
-    """ساخت گروه دنگ جدید و عضویت سازنده در آن همراه با لقب رندوم"""
+    """ساخت گروه دنگ جدید و عضویت سازنده در آن همراه با نام معنادار"""
     invite_code = secrets.token_hex(4)  # کد ۸ کاراکتری یکتا
-    creator_nick = get_random_member_nickname()
+    creator_nick = await get_user_calling_name(created_by) or "رئیس"
     
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("""
@@ -153,7 +188,7 @@ async def create_group(title: str, created_by: int) -> tuple[int, str]:
         """, (invite_code, title, created_by))
         group_id = cursor.lastrowid
 
-        # افزودن خود سازنده به گروه همراه با لقب رندوم
+        # افزودن خود سازنده به گروه همراه با نام معنادار
         await db.execute("""
             INSERT OR IGNORE INTO group_members (group_id, user_id, nickname)
             VALUES (?, ?, ?)
@@ -195,10 +230,10 @@ async def get_group_by_id(group_id: int) -> dict | None:
             return dict(row) if row else None
 
 
-async def add_group_member(group_id: int, user_id: int) -> tuple[bool, str]:
+async def add_group_member(group_id: int, user_id: int, custom_name: str | None = None) -> tuple[bool, str]:
     """
-    افزودن کاربر به گروه همراه با اختصاص لقب رندوم خنده‌دار.
-    خروجی: (آیا تازه عضو شده؟ , لقب کاربر)
+    افزودن کاربر به گروه همراه با نام معنادار.
+    خروجی: (آیا تازه عضو شده؟ , نام کاربر)
     """
     async with aiosqlite.connect(DB_PATH) as db:
         # بررسی عضویت قبلی
@@ -206,16 +241,15 @@ async def add_group_member(group_id: int, user_id: int) -> tuple[bool, str]:
             row = await cursor.fetchone()
             if row:
                 existing_nick = row[0]
-                if not existing_nick:
-                    new_nick = get_random_member_nickname()
-                    await db.execute("UPDATE group_members SET nickname = ? WHERE group_id = ? AND user_id = ?", (new_nick, group_id, user_id))
+                if custom_name and custom_name != existing_nick:
+                    await db.execute("UPDATE group_members SET nickname = ? WHERE group_id = ? AND user_id = ?", (custom_name, group_id, user_id))
                     await db.commit()
                     schedule_cloud_backup()
-                    return False, new_nick
+                    return False, custom_name
                 return False, existing_nick
 
         # عضو جدید
-        nickname = get_random_member_nickname()
+        nickname = custom_name or await get_user_calling_name(user_id) or "همراه"
         await db.execute("""
             INSERT INTO group_members (group_id, user_id, nickname)
             VALUES (?, ?, ?)
@@ -310,11 +344,11 @@ async def get_user_groups(user_id: int) -> list[dict]:
 
 
 async def get_group_members(group_id: int) -> list[dict]:
-    """لیست اعضای یک گروه همراه با نام، یوزرنیم، شماره کارت و لقب اختصاصی"""
+    """لیست اعضای یک گروه همراه با نام، یوزرنیم، شماره کارت و نام صدا زدن معنادار"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
-            SELECT u.id, u.full_name, u.username, u.card_number, u.bank_name, gm.nickname, gm.joined_at
+            SELECT u.id, u.full_name, u.username, u.card_number, u.bank_name, u.calling_name, gm.nickname, gm.joined_at
             FROM group_members gm
             JOIN users u ON gm.user_id = u.id
             WHERE gm.group_id = ?
@@ -324,13 +358,11 @@ async def get_group_members(group_id: int) -> list[dict]:
             members = []
             for r in rows:
                 item = dict(r)
-                nick = item.get("nickname")
-                if not nick:
-                    nick = get_random_member_nickname()
-                    await db.execute("UPDATE group_members SET nickname = ? WHERE group_id = ? AND user_id = ?", (nick, group_id, item["id"]))
-                    await db.commit()
-                    item["nickname"] = nick
-                item["display_name"] = f"{item['full_name']} ({nick})"
+                name = item.get("nickname") or item.get("calling_name")
+                if not name:
+                    name = guess_meaningful_name(item["full_name"], None, item.get("username")) or item["full_name"]
+                item["nickname"] = name
+                item["display_name"] = name
                 members.append(item)
             return members
 

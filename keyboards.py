@@ -9,6 +9,9 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(text="💳 شماره کارت بانکی من", callback_data="nav:my_card"),
+            InlineKeyboardButton(text="👤 نام من در ربات", callback_data="name:edit")
+        ],
+        [
             InlineKeyboardButton(text="ℹ️ راهنمای استفاده", callback_data="nav:help")
         ]
     ]
