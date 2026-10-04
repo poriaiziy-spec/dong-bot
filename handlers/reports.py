@@ -332,13 +332,17 @@ async def handle_nack_payment(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("grp:zero_confirm:"))
 async def handle_zero_confirm(callback: CallbackQuery):
-    await callback.answer()
     group_id = int(callback.data.split(":")[2])
     group = await db.get_group_by_id(group_id)
     if not group:
         await callback.answer("گروه یافت نشد!", show_alert=True)
         return
+
+    if group["created_by"] != callback.from_user.id:
+        await callback.answer("⚠️ فقط سرگروه مجاز به صفر کردن دوره‌ای حساب‌ها است عزیز دلم!", show_alert=True)
+        return
         
+    await callback.answer()
     group_tone = await db.get_group_tone(group_id)
     text = msg_zero_confirm(group_tone, group["title"])
     await callback.message.edit_text(
@@ -354,6 +358,10 @@ async def handle_zero_execute(callback: CallbackQuery):
     group = await db.get_group_by_id(group_id)
     if not group:
         await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    if group["created_by"] != callback.from_user.id:
+        await callback.answer("⚠️ فقط سرگروه مجاز به صفر کردن حساب‌ها است جان دلم!", show_alert=True)
         return
         
     group_tone = await db.get_group_tone(group_id)

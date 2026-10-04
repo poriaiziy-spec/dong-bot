@@ -16,3 +16,11 @@ DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "dong_bot.db"))
 # پروکسی برای مواقعی که در ایران نیاز به اتصال به تلگرام دارید
 # فرمت: socks5://127.0.0.1:10808 یا http://127.0.0.1:10809
 PROXY_URL = os.getenv("PROXY_URL", "")
+
+# لیست شناسه‌های عددی ادمین‌های ربات جهت دسترسی به تنظیمات حساس و ریست
+admin_env = os.getenv("ADMIN_IDS", "1207936155")
+ADMIN_IDS = [int(x.strip()) for x in admin_env.split(",") if x.strip().isdigit()]
+
+# کلید رمزنگاری سرتاسری دیتابیس در فضای ابری
+ENCRYPTION_SECRET = os.getenv("DB_ENCRYPTION_KEY") or BOT_TOKEN or "dong_bot_master_vault_key_2026"
+

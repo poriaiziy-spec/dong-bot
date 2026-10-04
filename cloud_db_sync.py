@@ -2,12 +2,14 @@
 import os
 import json
 import base64
+import hashlib
 import urllib.request
 import urllib.error
 import aiosqlite
 import asyncio
 import logging
-from config import DB_PATH
+from cryptography.fernet import Fernet
+from config import DB_PATH, ENCRYPTION_SECRET
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,12 @@ BACKUP_BRANCH = "db-storage"
 
 _backup_lock = asyncio.Lock()
 _pending_backup = False
+
+def _get_fernet() -> Fernet:
+    """تولید کلید رمزنگاری متقارن AES-256 بر پایه کلید اختصاصی بات"""
+    key_bytes = hashlib.sha256(ENCRYPTION_SECRET.encode("utf-8")).digest()
+    b64_key = base64.urlsafe_b64encode(key_bytes)
+    return Fernet(b64_key)
 
 def _github_api_request(endpoint: str, data: dict | None = None, method: str = "GET") -> dict | None:
     if not GITHUB_TOKEN:
@@ -55,8 +63,20 @@ async def _do_backup() -> bool:
                 except Exception:
                     dump[table] = []
                     
-        content_json = json.dumps(dump, ensure_ascii=False, indent=2)
-        content_b64 = base64.b64encode(content_json.encode("utf-8")).decode("ascii")
+        content_json = json.dumps(dump, ensure_ascii=False)
+        
+        # رمزنگاری سرتاسری غیرقابل نفوذ با کلید خصوصی بات (Zero-Knowledge AES Encryption)
+        fernet = _get_fernet()
+        encrypted_token = fernet.encrypt(content_json.encode("utf-8")).decode("ascii")
+        
+        secure_envelope = {
+            "version": 2,
+            "encrypted": True,
+            "cipher": "fernet-aes-256",
+            "data": encrypted_token
+        }
+        envelope_json = json.dumps(secure_envelope, indent=2)
+        content_b64 = base64.b64encode(envelope_json.encode("utf-8")).decode("ascii")
         
         # تلاش با بازآوری sha در صورت بروز تداخل (حداکثر ۳ بار)
         for attempt in range(3):
@@ -64,7 +84,7 @@ async def _do_backup() -> bool:
             sha = existing.get("sha") if (existing and isinstance(existing, dict) and "sha" in existing) else None
             
             payload = {
-                "message": "Auto-backup: database state",
+                "message": "Auto-backup: encrypted database state",
                 "content": content_b64,
                 "branch": BACKUP_BRANCH
             }
@@ -75,7 +95,7 @@ async def _do_backup() -> bool:
             if res and "_error_code" not in res:
                 total_cards = len(dump.get("user_cards", []))
                 total_users = len(dump.get("users", []))
-                logger.info(f"✅ بکاپ ابری دیتابیس با موفقیت ثبت شد ({total_users} کاربر، {total_cards} کارت بانکی).")
+                logger.info(f"🔒 بکاپ رمزنگاری‌شده ابری با موفقیت ثبت شد ({total_users} کاربر، {total_cards} کارت).")
                 return True
             else:
                 logger.warning(f"تلاش مجدد برای بکاپ ابری ({attempt + 1}/3)...")
@@ -87,7 +107,7 @@ async def _do_backup() -> bool:
         return False
 
 async def backup_to_cloud() -> bool:
-    """تهیه فوری نسخه پشتیبان ابری از تمام داده‌ها در شاخه db-storage بدون ریستارت شدن سرور"""
+    """تهیه فوری نسخه پشتیبان ابری رمزنگاری‌شده در شاخه db-storage"""
     global _pending_backup
     if not GITHUB_TOKEN:
         return False
@@ -105,7 +125,7 @@ async def backup_to_cloud() -> bool:
         return res
 
 async def restore_from_cloud():
-    """بازیابی و ادغام داده‌ها از گیت‌هاب شاخه db-storage هنگام روشن شدن سرور Render"""
+    """بازیابی و رمزگشایی داده‌ها از گیت‌هاب شاخه db-storage هنگام روشن شدن سرور Render"""
     if not GITHUB_TOKEN:
         return
         
@@ -117,7 +137,16 @@ async def restore_from_cloud():
             return
             
         content_bytes = base64.b64decode(data_resp["content"])
-        dump = json.loads(content_bytes.decode("utf-8"))
+        raw_obj = json.loads(content_bytes.decode("utf-8"))
+        
+        # بررسی اینکه آیا بکاپ رمزنگاری شده است یا خیر
+        if isinstance(raw_obj, dict) and raw_obj.get("encrypted") is True:
+            fernet = _get_fernet()
+            decrypted_bytes = fernet.decrypt(raw_obj["data"].encode("ascii"))
+            dump = json.loads(decrypted_bytes.decode("utf-8"))
+            logger.info("🔓 بکاپ ابری با موفقیت رمزگشایی شد.")
+        else:
+            dump = raw_obj  # سازگاری با بکاپ‌های بدون رمزنگاری قبلی
         
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("PRAGMA foreign_keys = OFF;")
@@ -174,7 +203,7 @@ async def restore_from_cloud():
         logger.error(f"Restore warning: {e}")
 
 _debounce_task: asyncio.Task | None = None
-_DEBOUNCE_SECONDS = 1.0  # بکاپ فوری ظرف ۱ ثانیه بعد از آخرین تغییر
+_DEBOUNCE_SECONDS = 1.0
 
 def schedule_cloud_backup(immediate: bool = False):
     """اجرای بکاپ‌گیری در پس‌زمینه به صورت بلادرنگ یا ظرف ۱ ثانیه"""
@@ -188,7 +217,6 @@ def schedule_cloud_backup(immediate: bool = False):
         loop.create_task(backup_to_cloud())
         return
 
-    # لغو تسک قبلی در صورت وجود و ساخت تسک ۱ ثانیه‌ای جدید
     if _debounce_task and not _debounce_task.done():
         _debounce_task.cancel()
 

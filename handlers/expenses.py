@@ -273,6 +273,23 @@ async def handle_delete_expense(callback: CallbackQuery):
     exp_id = int(parts[2])
     group_id = int(parts[3])
     
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    all_expenses = await db.get_group_history(group_id, limit=200)
+    target_exp = next((e for e in all_expenses if e["id"] == exp_id), None)
+    
+    # فقط ثبت‌کننده هزینه یا سازنده گروه مجاز به حذف هستند
+    is_authorized = (
+        callback.from_user.id == group["created_by"] or 
+        (target_exp and target_exp.get("payer_id") == callback.from_user.id)
+    )
+    if not is_authorized:
+        await callback.answer("⚠️ فقط ثبت‌کننده این هزینه یا سرگروه مجاز به حذف آن است عزیز دلم!", show_alert=True)
+        return
+    
     success = await db.delete_expense(exp_id, group_id)
     if success:
         await callback.answer("✅ هزینه با موفقیت حذف شد جان دلم.", show_alert=True)
@@ -281,7 +298,6 @@ async def handle_delete_expense(callback: CallbackQuery):
         
     # بازگشت به تاریخچه
     history = await db.get_group_history(group_id, limit=15)
-    group = await db.get_group_by_id(group_id)
     calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
     if not history:
         text = f"📜 هنوز هیچ هزینه‌ای برای دورهمی <b>«{safe(group['title'])}»</b> ثبت نشده {safe(calling_name)} قشنگم."

@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 
 import database as db
 import keyboards as kb
+from config import ADMIN_IDS
 from helpers import safe
 from name_utils import guess_meaningful_name, clean_input_name, is_clean_persian_name
 from states import NamePromptStates
@@ -257,8 +258,12 @@ async def handle_nav_main(callback: CallbackQuery, state: FSMContext):
 @router.message(Command("reset", "reset_all_data"))
 async def handle_reset_prompt(message: Message, state: FSMContext):
     await state.clear()
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("⛔ شما مجاز به اجرای دستورات مدیریتی سیستم نیستید.")
+        return
+
     text = (
-        "⚠️ <b>هشدار پاکسازی و ریست کامل اطلاعات:</b>\n\n"
+        "⚠️ <b>هشدار پاکسازی و ریست کامل اطلاعات (مخصوص مدیر):</b>\n\n"
         "آیا مطمئن هستید که می‌خواهید <b>تمام داده‌های ربات</b> را پاک کنید؟\n"
         "• تمام گروه‌ها، اعضا، دنگ‌ها، هزینه‌ها و شماره کارت‌ها کاملاً پاک خواهند شد و ربات از صفر شروع به کار می‌کند."
     )
@@ -272,6 +277,10 @@ async def handle_reset_prompt(message: Message, state: FSMContext):
 @router.callback_query(F.data == "admin:reset:confirm")
 async def handle_reset_execute(callback: CallbackQuery, state: FSMContext):
     await state.clear()
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔ دسترسی غیرمجاز!", show_alert=True)
+        return
+
     await db.reset_all_database()
     await callback.answer("✅ تمام داده‌های ربات پاک شدند!", show_alert=True)
     
