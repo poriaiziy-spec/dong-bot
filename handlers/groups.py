@@ -9,7 +9,7 @@ from states import GroupCreationStates
 from helpers import format_amount
 
 from random_names import get_random_group_name
-from tones import TONE_NAMES
+from tones import TONE_NAMES, msg_group_dashboard
 
 router = Router()
 
@@ -116,9 +116,9 @@ async def finish_group_creation(msg_target: Message, user, title: str, state: FS
         "این لینک را برای دوستانتان بفرستید تا با یک کلیک و با لقب‌های خنده‌دار رندوم به گروه ملحق شوند!"
     )
     if hasattr(msg_target, "edit_text") and msg_target.from_user.is_bot:
-        await msg_target.edit_text(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group_id))
+        await msg_target.edit_text(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group_id, is_creator=True))
     else:
-        await msg_target.answer(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group_id))
+        await msg_target.answer(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group_id, is_creator=True))
 
 
 @router.callback_query(F.data.startswith("grp:view:"))
@@ -139,17 +139,18 @@ async def handle_view_group(callback: CallbackQuery, state: FSMContext):
     total_active_amount = sum(e["amount"] for e in active_expenses)
     
     current_tone = await db.get_group_tone(group_id)
-    current_tone_name = TONE_NAMES.get(current_tone, "😊 دوستانه و محاوره")
+    current_tone_name = TONE_NAMES.get(current_tone, "😊 دوستانه و خودمونی")
     
     members_lines = "\n".join([f"• {m['full_name']} ➡️ <b>{m.get('nickname', '')}</b>" for m in members])
     
-    text = (
-        f"📁 گروه: <b>{group['title']}</b>\n\n"
-        f"👥 <b>اعضا و لقب‌های گروه ({len(members)} نفر):</b>\n{members_lines}\n\n"
-        f"💰 کل هزینه‌های فعال این دوره: <b>{format_amount(total_active_amount)}</b>\n"
-        f"🧾 تعداد فاکتورهای تسویه نشده: <b>{len(active_expenses)}</b> مورد\n"
-        f"🎭 لحن ربات در این گروه: <b>{current_tone_name}</b>\n\n"
-        "یکی از عملیات زیر را انتخاب کنید:"
+    text = msg_group_dashboard(
+        tone=current_tone,
+        title=group["title"],
+        member_count=len(members),
+        member_lines=members_lines,
+        total_amount=total_active_amount,
+        expenses_count=len(active_expenses),
+        tone_name=current_tone_name
     )
     
     is_creator = (group["created_by"] == callback.from_user.id)

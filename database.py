@@ -2,6 +2,7 @@ import aiosqlite
 import secrets
 from config import DB_PATH
 from random_names import get_random_member_nickname
+from cloud_db_sync import restore_from_cloud, schedule_cloud_backup
 
 async def init_db():
     """ایجاد جداول دیتابیس در صورت عدم وجود"""
@@ -84,6 +85,9 @@ async def init_db():
         """)
 
         await db.commit()
+    
+    # بازیابی خودکار داده‌ها در سرورهای ابری
+    await restore_from_cloud()
 
 
 async def upsert_user(user_id: int, username: str | None, full_name: str):
@@ -97,6 +101,7 @@ async def upsert_user(user_id: int, username: str | None, full_name: str):
                 full_name = excluded.full_name
         """, (user_id, username, full_name))
         await db.commit()
+        schedule_cloud_backup()
 
 
 async def create_group(title: str, created_by: int) -> tuple[int, str]:
@@ -118,6 +123,7 @@ async def create_group(title: str, created_by: int) -> tuple[int, str]:
         """, (group_id, created_by, creator_nick))
 
         await db.commit()
+        schedule_cloud_backup()
         return group_id, invite_code
 
 
@@ -154,6 +160,7 @@ async def add_group_member(group_id: int, user_id: int) -> tuple[bool, str]:
                     new_nick = get_random_member_nickname()
                     await db.execute("UPDATE group_members SET nickname = ? WHERE group_id = ? AND user_id = ?", (new_nick, group_id, user_id))
                     await db.commit()
+                    schedule_cloud_backup()
                     return False, new_nick
                 return False, existing_nick
 
@@ -164,6 +171,7 @@ async def add_group_member(group_id: int, user_id: int) -> tuple[bool, str]:
             VALUES (?, ?, ?)
         """, (group_id, user_id, nickname))
         await db.commit()
+        schedule_cloud_backup()
         return True, nickname
 
 
@@ -175,7 +183,9 @@ async def remove_group_member(group_id: int, user_id: int) -> bool:
             WHERE group_id = ? AND user_id = ?
         """, (group_id, user_id))
         await db.commit()
+        schedule_cloud_backup()
         return cursor.rowcount > 0
+
 
 
 
@@ -240,6 +250,7 @@ async def add_expense(group_id: int, payer_id: int, title: str, amount: int, sha
             """, (expense_id, user_id, share_amt))
 
         await db.commit()
+        schedule_cloud_backup()
         return expense_id
 
 
@@ -291,6 +302,7 @@ async def delete_expense(expense_id: int, group_id: int) -> bool:
         await db.execute("DELETE FROM expense_shares WHERE expense_id = ?", (expense_id,))
         cursor = await db.execute("DELETE FROM expenses WHERE id = ? AND group_id = ?", (expense_id, group_id))
         await db.commit()
+        schedule_cloud_backup()
         return cursor.rowcount > 0
 
 
@@ -307,6 +319,7 @@ async def settle_group(group_id: int) -> int:
             WHERE group_id = ? AND settled = 0
         """, (group_id,))
         await db.commit()
+        schedule_cloud_backup()
         return cursor.rowcount
 
 
@@ -319,6 +332,7 @@ async def update_user_card(user_id: int, card_number: str | None, bank_name: str
             WHERE id = ?
         """, (card_number, bank_name, user_id))
         await db.commit()
+        schedule_cloud_backup()
 
 
 async def get_user_card(user_id: int) -> dict:
@@ -337,6 +351,7 @@ async def set_group_tone(group_id: int, tone: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE groups SET tone = ? WHERE id = ?", (tone, group_id))
         await db.commit()
+        schedule_cloud_backup()
 
 
 async def get_group_tone(group_id: int) -> str:
@@ -360,7 +375,7 @@ async def reset_all_database():
         await db.execute("DELETE FROM groups;")
         await db.execute("DELETE FROM users;")
         await db.execute("PRAGMA foreign_keys = ON;")
-        await db.execute("VACUUM;")
         await db.commit()
+        schedule_cloud_backup()
 
 

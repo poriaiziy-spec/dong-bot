@@ -6,6 +6,13 @@ import database as db
 import keyboards as kb
 from states import ExpenseCreationStates
 from helpers import clean_amount_input, format_amount
+from tones import (
+    msg_expense_title_prompt,
+    msg_expense_amount_prompt,
+    msg_expense_payer_prompt,
+    msg_expense_shares_prompt,
+    msg_expense_saved
+)
 
 router = Router()
 
@@ -19,14 +26,12 @@ async def handle_start_add_expense(callback: CallbackQuery, state: FSMContext):
         await callback.answer("گروه عضوی ندارد!", show_alert=True)
         return
         
+    tone = await db.get_group_tone(group_id)
     await state.clear()
-    await state.update_data(group_id=group_id)
+    await state.update_data(group_id=group_id, tone=tone)
     await state.set_state(ExpenseCreationStates.waiting_for_title)
     
-    text = (
-        "📌 <b>بابت چه چیزی هزینه شده است؟</b>\n"
-        "یک عنوان کوتاه بنویسید (مثلاً: <i>شام رستوران، بنزین، ویلا، خرید سوپرمارکت</i>):"
-    )
+    text = msg_expense_title_prompt(tone)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.cancel_keyboard(group_id))
 
 
@@ -42,13 +47,9 @@ async def handle_expense_title(message: Message, state: FSMContext):
     
     data = await state.get_data()
     group_id = data.get("group_id")
+    tone = data.get("tone") or (await db.get_group_tone(group_id) if group_id else "friendly")
     
-    text = (
-        f"🏷️ بابت: <b>{title}</b>\n\n"
-        "💵 <b>مبلغ کل چقدر شد؟ (به تومان)</b>\n"
-        "می‌توانید به صورت عدد، با ویرگول یا فارسی بفرستید\n"
-        "(مثلاً: <code>450000</code> یا <code>450,000</code> یا <code>۴۵۰ هزار</code>):"
-    )
+    text = msg_expense_amount_prompt(tone, title)
     await message.answer(text, parse_mode="HTML", reply_markup=kb.cancel_keyboard(group_id))
 
 
@@ -65,16 +66,12 @@ async def handle_expense_amount(message: Message, state: FSMContext):
     await state.update_data(amount=amount)
     data = await state.get_data()
     group_id = data["group_id"]
+    tone = data.get("tone") or (await db.get_group_tone(group_id) if group_id else "friendly")
     
     members = await db.get_group_members(group_id)
     await state.set_state(ExpenseCreationStates.waiting_for_payer)
     
-    text = (
-        f"🏷️ بابت: <b>{data['title']}</b>\n"
-        f"💰 مبلغ کل: <b>{format_amount(amount)}</b>\n\n"
-        "👤 <b>این هزینه را چه کسی پرداخت کرده است؟</b>\n"
-        "شخص پرداخت‌کننده را انتخاب کنید:"
-    )
+    text = msg_expense_payer_prompt(tone, data["title"], format_amount(amount))
     await message.answer(
         text,
         parse_mode="HTML",
@@ -103,14 +100,9 @@ async def handle_payer_selected(callback: CallbackQuery, state: FSMContext):
     
     payer_user = next((m for m in members if m["id"] == payer_id), None)
     payer_name = payer_user["full_name"] if payer_user else "نامشخص"
+    tone = data.get("tone") or (await db.get_group_tone(group_id) if group_id else "friendly")
     
-    text = (
-        f"🏷️ بابت: <b>{data['title']}</b>\n"
-        f"💰 مبلغ: <b>{format_amount(data['amount'])}</b>\n"
-        f"👤 پرداخت‌کننده: <b>{payer_name}</b>\n\n"
-        "👥 <b>چه کسانی در این هزینه سهیم هستند؟</b>\n"
-        "به‌صورت پیش‌فرض همه اعضا انتخاب شده‌اند. می‌توانید افراد را کم/زیاد کنید یا دکمه تأیید را بزنید:"
-    )
+    text = msg_expense_shares_prompt(tone, data["title"], format_amount(data["amount"]), payer_name)
     await callback.message.edit_text(
         text,
         parse_mode="HTML",
@@ -166,6 +158,7 @@ async def save_expense_final(callback: CallbackQuery, state: FSMContext):
     title = data["title"]
     amount = data["amount"]
     selected_ids = data.get("selected_shares", [])
+    tone = data.get("tone") or (await db.get_group_tone(group_id) if group_id else "friendly")
     
     if not selected_ids:
         await callback.answer("حداقل یک نفر باید در دنگ سهیم باشد!", show_alert=True)
@@ -191,19 +184,23 @@ async def save_expense_final(callback: CallbackQuery, state: FSMContext):
     involved_members = [m["full_name"] for m in members if m["id"] in selected_ids]
     involved_text = "، ".join(involved_members)
     
-    text = (
-        f"✅ <b>هزینه با موفقیت ثبت شد!</b>\n\n"
-        f"🏷️ بابت: <b>{title}</b>\n"
-        f"💰 مبلغ کل: <b>{format_amount(amount)}</b>\n"
-        f"👤 پرداخت‌کننده: <b>{payer_name}</b>\n"
-        f"👥 سهیم‌ها ({count} نفر - هر نفر ~ {format_amount(base_share)}):\n"
-        f"<i>{involved_text}</i>\n"
+    text = msg_expense_saved(
+        tone=tone,
+        title=title,
+        amt_str=format_amount(amount),
+        payer_name=payer_name,
+        count=count,
+        base_share_str=format_amount(base_share),
+        involved_text=involved_text
     )
+    
+    group = await db.get_group_by_id(group_id)
+    is_creator = bool(group and group["created_by"] == callback.from_user.id)
     
     await callback.message.edit_text(
         text,
         parse_mode="HTML",
-        reply_markup=kb.group_dashboard_keyboard(group_id)
+        reply_markup=kb.group_dashboard_keyboard(group_id, is_creator=is_creator)
     )
 
 

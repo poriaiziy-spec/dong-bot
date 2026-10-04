@@ -5,6 +5,15 @@ import database as db
 import keyboards as kb
 from calculator import calculate_group_balances
 from helpers import format_amount
+from tones import (
+    render_reminder_msg,
+    render_payment_notice,
+    render_settlement_title,
+    render_no_expenses_msg,
+    render_all_settled_msg,
+    msg_zero_confirm,
+    msg_zero_done
+)
 
 router = Router()
 
@@ -20,13 +29,10 @@ async def handle_group_report(callback: CallbackQuery):
         
     members = await db.get_group_members(group_id)
     active_expenses = await db.get_active_expenses(group_id)
+    group_tone = await db.get_group_tone(group_id)
     
     if not active_expenses:
-        text = (
-            f"📊 <b>گزارش حساب‌های گروه «{group['title']}»:</b>\n\n"
-            "📭 در حال حاضر هیچ هزینه فعالی در این دوره ثبت نشده است یا حساب‌ها قبلاً صفر شده‌اند.\n\n"
-            "برای شروع می‌توانید از منوی گروه گزینه «💸 ثبت هزینه جدید» را انتخاب کنید."
-        )
+        text = render_no_expenses_msg(group_tone, group["title"])
         markup = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💸 ثبت هزینه جدید", callback_data=f"exp:add:{group_id}")],
             [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
@@ -76,7 +82,6 @@ async def handle_group_report(callback: CallbackQuery):
     await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=markup)
 
 
-from tones import render_reminder_msg, render_payment_notice, render_settlement_title
 from bank_utils import format_card_number
 
 @router.callback_query(F.data.startswith("grp:settle_calc:"))
@@ -99,11 +104,7 @@ async def handle_settlement_calculation(callback: CallbackQuery):
     markup_buttons = []
     
     if not settlements:
-        text = (
-            f"{render_settlement_title(group_tone, group['title'])}\n"
-            "🎉 <b>همه حساب‌ها صاف است!</b>\n"
-            "هیچ بدهی ثبت شده‌ای وجود ندارد و کسی به دیگری بدهکار نیست."
-        )
+        text = render_all_settled_msg(group_tone, group["title"])
     else:
         lines = [
             f"{render_settlement_title(group_tone, group['title'])}",
@@ -278,14 +279,12 @@ async def handle_zero_confirm(callback: CallbackQuery):
     await callback.answer()
     group_id = int(callback.data.split(":")[2])
     group = await db.get_group_by_id(group_id)
-    
-    text = (
-        f"⚠️ <b>تأییدیه صفر کردن و بستن دوره مالی گروه «{group['title']}»</b>\n\n"
-        "آیا مطمئن هستید که می‌خواهید حساب‌ها را صفر کنید؟\n\n"
-        "• با انجام این کار، تمام بدهی‌ها و هزینه‌های فعلی به وضعیت «تسویه شده» درمی‌آیند.\n"
-        "• حساب تمام اعضا در دوره جدید صفر خواهد شد.\n"
-        "• سوابق تمام خرج‌ها در بخش تاریخچه ذخیره خواهد ماند."
-    )
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+        
+    group_tone = await db.get_group_tone(group_id)
+    text = msg_zero_confirm(group_tone, group["title"])
     await callback.message.edit_text(
         text,
         parse_mode="HTML",
@@ -297,15 +296,15 @@ async def handle_zero_confirm(callback: CallbackQuery):
 async def handle_zero_execute(callback: CallbackQuery):
     group_id = int(callback.data.split(":")[2])
     group = await db.get_group_by_id(group_id)
-    
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+        
+    group_tone = await db.get_group_tone(group_id)
     settled_count = await db.settle_group(group_id)
     await callback.answer("✅ حساب‌ها با موفقیت صفر شدند!", show_alert=True)
     
-    text = (
-        f"🎉 <b>حساب‌های گروه «{group['title']}» با موفقیت صفر و تسویه شدند!</b>\n\n"
-        f"تعداد {settled_count} هزینه در این دوره بسته و بایگانی شدند.\n"
-        "دوره مالی جدید از صفر شروع شد. خریدهای بعدی را می‌توانید مجدداً ثبت کنید."
-    )
+    text = msg_zero_done(group_tone, group["title"], settled_count)
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
     ])
