@@ -38,8 +38,9 @@ async def handle_start_add_expense(callback: CallbackQuery, state: FSMContext):
 @router.message(ExpenseCreationStates.waiting_for_title)
 async def handle_expense_title(message: Message, state: FSMContext):
     title = (message.text or "").strip()
+    calling_name = await db.get_user_calling_name(message.from_user.id) or "جان دلم"
     if len(title) < 2 or len(title) > 80:
-        await message.answer("⚠️ لطفاً عنوانی بین ۲ تا ۸۰ کاراکتر وارد کنید:")
+        await message.answer(f"⚠️ {safe(calling_name)} جانم، لطفاً عنوانی بین ۲ تا ۸۰ حرف برام بنویس:")
         return
 
     await state.update_data(title=title)
@@ -56,9 +57,10 @@ async def handle_expense_title(message: Message, state: FSMContext):
 @router.message(ExpenseCreationStates.waiting_for_amount)
 async def handle_expense_amount(message: Message, state: FSMContext):
     amount = clean_amount_input(message.text or "")
+    calling_name = await db.get_user_calling_name(message.from_user.id) or "عزیز دلم"
     if not amount or amount <= 0:
         await message.answer(
-            "⚠️ مبلغ نامعتبر است! لطفاً عدد را به تومان وارد کنید (مثلاً: <code>250000</code> یا <code>۲۵۰ هزار</code>):",
+            f"⚠️ مبلغ نامعتبره {safe(calling_name)} قشنگم! لطفاً عدد رو به تومان برام بفرست (مثلاً: <code>250000</code> یا <code>۲۵۰ هزار</code>):",
             parse_mode="HTML"
         )
         return
@@ -211,16 +213,17 @@ async def handle_expense_history(callback: CallbackQuery):
     
     history = await db.get_group_history(group_id, limit=15)
     group = await db.get_group_by_id(group_id)
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
     
     if not history:
-        text = f"📜 هنوز هیچ هزینه‌ای برای گروه <b>«{safe(group['title'])}»</b> ثبت نشده است."
+        text = f"📜 هنوز هیچ هزینه‌ای برای دورهمی <b>«{safe(group['title'])}»</b> ثبت نشده {safe(calling_name)} قشنگم! ☕❤️\n\nهر وقت خریدی انجام شد، با دکمه ثبت هزینه اضافه‌ش کن تا با عشق برات حساب کنم."
         markup = kb.InlineKeyboardMarkup(inline_keyboard=[
             [kb.InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
         ])
     else:
         text = (
-            f"📜 <b>تاریخچه هزینه‌های گروه «{safe(group['title'])}»:</b>\n"
-            "برای مشاهده جزئیات یا حذف هر هزینه، روی آن کلیک کنید:\n"
+            f"📜 <b>تاریخچه هزینه‌های دورهمی «{safe(group['title'])}»، {safe(calling_name)} جانم:</b> ☕❤️\n\n"
+            "برای دیدن جزئیات یا حذف هر هزینه، روی اون بزن عزیز دلم:\n"
             "(علامت ✅: تسویه شده / علامت ⏳: فعال در این دوره)"
         )
         markup = kb.expense_history_keyboard(history, group_id)
@@ -244,12 +247,13 @@ async def handle_view_single_expense(callback: CallbackQuery):
         expense = next((e for e in all_hist if e["id"] == exp_id), None)
         
     if not expense:
-        await callback.answer("هزینه یافت نشد!", show_alert=True)
+        await callback.answer("هزینه یافت نشد عزیز دلم!", show_alert=True)
         return
 
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
     status = "تسویه شده ✅" if expense.get("settled") else "فعال در دوره جاری ⏳"
     text = (
-        f"🔍 <b>جزئیات هزینه:</b>\n\n"
+        f"🔍 <b>جزئیات این هزینه برای شما، {safe(calling_name)} جانم:</b> ☕❤️\n\n"
         f"🏷️ بابت: <b>{safe(expense['title'])}</b>\n"
         f"💰 مبلغ: <b>{format_amount(expense['amount'])}</b>\n"
         f"👤 پرداخت‌کننده: <b>{expense.get('payer_name', 'نامشخص')}</b>\n"
@@ -271,20 +275,21 @@ async def handle_delete_expense(callback: CallbackQuery):
     
     success = await db.delete_expense(exp_id, group_id)
     if success:
-        await callback.answer("✅ هزینه با موفقیت حذف شد.", show_alert=True)
+        await callback.answer("✅ هزینه با موفقیت حذف شد جان دلم.", show_alert=True)
     else:
-        await callback.answer("⚠️ خطا در حذف هزینه!", show_alert=True)
+        await callback.answer("⚠️ خطا در حذف هزینه عزیز دلم!", show_alert=True)
         
     # بازگشت به تاریخچه
     history = await db.get_group_history(group_id, limit=15)
     group = await db.get_group_by_id(group_id)
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
     if not history:
-        text = f"📜 هنوز هیچ هزینه‌ای برای گروه <b>«{safe(group['title'])}»</b> ثبت نشده است."
+        text = f"📜 هنوز هیچ هزینه‌ای برای دورهمی <b>«{safe(group['title'])}»</b> ثبت نشده {safe(calling_name)} قشنگم."
         markup = kb.InlineKeyboardMarkup(inline_keyboard=[
             [kb.InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
         ])
     else:
-        text = f"📜 <b>تاریخچه هزینه‌های گروه «{safe(group['title'])}»:</b>"
+        text = f"📜 <b>تاریخچه هزینه‌های دورهمی «{safe(group['title'])}»، {safe(calling_name)} جانم:</b>"
         markup = kb.expense_history_keyboard(history, group_id)
         
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)

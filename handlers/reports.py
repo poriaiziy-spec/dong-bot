@@ -44,11 +44,12 @@ async def handle_group_report(callback: CallbackQuery):
     total_spent = calc_res["total_spent"]
     stats = calc_res["member_stats"]
     
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
     lines = [
-        f"📊 <b>گزارش کامل حساب‌های گروه «{safe(group['title'])}»</b>\n",
-        f"💰 کل هزینه‌های دوره جاری: <b>{format_amount(total_spent)}</b>",
+        f"📊 <b>گزارش کامل حساب‌های دورهمی «{safe(group['title'])}»، {safe(calling_name)} قشنگم ☕❤️</b>\n",
+        f"💰 کل هزینه‌های این دوره: <b>{format_amount(total_spent)}</b>",
         f"🧾 تعداد فاکتورها: <b>{len(active_expenses)}</b> مورد\n",
-        "👥 <b>وضعیت اعضا:</b>"
+        "👥 <b>وضعیت حساب تک‌تک بچه‌ها:</b>"
     ]
     
     for s in stats:
@@ -71,7 +72,7 @@ async def handle_group_report(callback: CallbackQuery):
             f"   • وضعیت نهایی: {status_text}\n"
         )
         
-    lines.append("👇 برای دیدن فرمول نهایی پرداخت و تسویه، دکمه زیر را بزنید:")
+    lines.append("👇 برای دیدن فرمول دقیق تسویه و حساب‌کتاب، دکمه زیر رو بزن عزیز دلم:")
     
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⚖️ فرمول نهایی تسویه حساب", callback_data=f"grp:settle_calc:{group_id}")],
@@ -145,7 +146,7 @@ async def handle_settlement_calculation(callback: CallbackQuery):
                 )
             ])
             
-        lines.append("✅ <i>پس از انجام واریزی‌ها، دکمه «صفر کردن حساب‌ها» را بزنید تا دوره بسته شود.</i>")
+        lines.append("✅ <i>هر وقت واریزی‌ها انجام شد، دکمه «صفر کردن حساب‌ها» رو بزن تا دوره رو با عشق ببندیم جان دلم.</i>")
         text = "\n".join(lines)
         
     markup_buttons.append([
@@ -199,8 +200,9 @@ async def handle_share_summary(callback: CallbackQuery):
     lines.append("🤖 محاسبه شده با ربات کافه دنگ ☕")
     
     share_text = "\n".join(lines)
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "عزیز دلم"
     await callback.message.answer(
-        f"📋 <b>متن آماده برای کپی یا فوروارد به گروه دوستان:</b>\n<i>(روی کادر زیر بزنید تا کپی شود)</i>\n\n<code>{safe(share_text)}</code>",
+        f"📋 <b>متن آماده برای کپی یا فوروارد به گروه دوستان، {safe(calling_name)} جانم:</b>\n<i>(روی کادر زیر بزنی خودش کپی میشه قشنگم)</i>\n\n<code>{safe(share_text)}</code>",
         parse_mode="HTML"
     )
 
@@ -297,13 +299,14 @@ async def handle_ack_payment(callback: CallbackQuery):
     creditor_id = int(parts[3])
     amount = int(parts[4])
     
-    await callback.answer("✅ دریافت وجه تایید شد!")
+    await callback.answer("✅ دریافت وجه تایید شد، دستت طلا عزیز دلم!")
     await callback.message.edit_text(callback.message.text + "\n\n🟢 <b>وضعیت: توسط طلبکار تایید شد.</b>", parse_mode="HTML")
     
     try:
+        debtor_calling = await db.get_user_calling_name(debtor_id) or "عزیز دلم"
         await callback.bot.send_message(
             debtor_id,
-            f"🎉 <b>واریزی شما تایید شد!</b>\nطلبکار دریافت مبلغ <b>{format_amount(amount)}</b> را تایید کرد. دمت گرم!",
+            f"🎉 <b>واریزی شما تایید شد {safe(debtor_calling)} قشنگم!</b>\nطلبکار دریافت مبلغ <b>{format_amount(amount)}</b> رو تایید کرد. دستت طلا و دمت گرم! ☕❤️",
             parse_mode="HTML"
         )
     except Exception:
@@ -317,9 +320,10 @@ async def handle_nack_payment(callback: CallbackQuery):
     await callback.message.edit_text(callback.message.text + "\n\n🔴 <b>وضعیت: طلبکار اعلام کرد پولی دریافت نشده است!</b>", parse_mode="HTML")
     
     try:
+        debtor_calling = await db.get_user_calling_name(debtor_id) or "جان دلم"
         await callback.bot.send_message(
             debtor_id,
-            "⚠️ <b>توجه:</b> طلبکار اعلام کرد که واریزی از طرف شما دریافت نکرده است. لطفاً فیش یا حسابتان را بررسی کنید.",
+            f"⚠️ <b>{safe(debtor_calling)} جانم:</b> طلبکار اعلام کرد که هنوز واریزی از طرفت براش ننشسته. بی زحمت فیش یا حسابت رو چک بکن فدات شم. ☕",
             parse_mode="HTML"
         )
     except Exception:
@@ -354,7 +358,7 @@ async def handle_zero_execute(callback: CallbackQuery):
         
     group_tone = await db.get_group_tone(group_id)
     settled_count = await db.settle_group(group_id)
-    await callback.answer("✅ حساب‌ها با موفقیت صفر شدند!", show_alert=True)
+    await callback.answer("✅ حساب‌ها با موفقیت صفر شدند جان دلم!", show_alert=True)
     
     text = msg_zero_done(group_tone, group["title"], settled_count)
     markup = InlineKeyboardMarkup(inline_keyboard=[

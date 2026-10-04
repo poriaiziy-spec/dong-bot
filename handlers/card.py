@@ -64,9 +64,10 @@ async def handle_add_card_prompt(callback: CallbackQuery, state: FSMContext):
 @router.message(CardRegistrationStates.waiting_for_card_number)
 async def handle_card_number_input(message: Message, state: FSMContext):
     clean = clean_card_input(message.text or "")
+    calling_name = await db.get_user_calling_name(message.from_user.id) or "جان دلم"
     if not clean:
         await message.answer(
-            "⚠️ شماره کارت نامعتبر است! شماره کارت باید دقیقاً ۱۶ رقم باشد. لطفاً مجدداً با دقت وارد کنید:",
+            f"⚠️ شماره کارت باید دقیقاً ۱۶ رقم باشه {safe(calling_name)} قشنگم! لطفاً دوباره با دقت برام بفرستش:",
             parse_mode="HTML"
         )
         return
@@ -82,9 +83,9 @@ async def handle_card_number_input(message: Message, state: FSMContext):
         cards = await db.get_user_cards(user_id)
         formatted = format_card_number(clean)
         if is_new:
-            status_txt = "✅ <b>کارت بانکی جدید با موفقیت ثبت شد!</b>"
+            status_txt = f"✅ <b>کارت بانکی جدیدت با عشق ثبت شد {safe(calling_name)} جانم!</b> ☕❤️"
         else:
-            status_txt = "ℹ️ این شماره کارت قبلاً در لیست شما ثبت شده بود."
+            status_txt = f"ℹ️ این شماره کارت قبلاً توی لیستت ثبت شده بود {safe(calling_name)} قشنگم."
             
         text = (
             f"{status_txt}\n\n"
@@ -99,7 +100,7 @@ async def handle_card_number_input(message: Message, state: FSMContext):
         await state.set_state(CardRegistrationStates.waiting_for_bank_name)
         await message.answer(
             f"🔢 شماره کارت: <code>{format_card_number(clean)}</code>\n\n"
-            "🏦 لطفاً <b>نام بانک</b> صادرکننده کارت را وارد کنید (مثلاً: بانک ملت، بلو، سامان):",
+            f"🏦 بانک این کارتت رو تشخیص ندادم {safe(calling_name)} قشنگم! لطفاً <b>نام بانک</b> رو برام بنویس (مثلاً: بانک ملت، بلو، سامان):",
             parse_mode="HTML"
         )
 
@@ -107,8 +108,9 @@ async def handle_card_number_input(message: Message, state: FSMContext):
 @router.message(CardRegistrationStates.waiting_for_bank_name)
 async def handle_bank_name_input(message: Message, state: FSMContext):
     bank_name = (message.text or "").strip()
+    calling_name = await db.get_user_calling_name(message.from_user.id) or "جان دلم"
     if len(bank_name) < 2 or len(bank_name) > 30:
-        await message.answer("⚠️ لطفاً یک نام معتبر برای بانک وارد کنید:")
+        await message.answer(f"⚠️ {safe(calling_name)} جانم، لطفاً یک نام معتبر برای بانک وارد کن:")
         return
         
     data = await state.get_data()
@@ -122,7 +124,7 @@ async def handle_bank_name_input(message: Message, state: FSMContext):
     cards = await db.get_user_cards(user_id)
     formatted = format_card_number(card_number)
     text = (
-        "✅ <b>کارت بانکی شما با موفقیت ثبت شد!</b>\n\n"
+        f"✅ <b>کارت بانکیت با عشق ثبت شد {safe(calling_name)} جانم!</b> ☕❤️\n\n"
         f"🔢 شماره کارت: <code>{formatted}</code>\n"
         f"🏦 بانک: <b>{safe(bank_name)}</b>\n\n"
         f"💼 تعداد کل کارت‌های شما: {len(cards)} کارت"
@@ -145,13 +147,14 @@ async def handle_view_card_detail(callback: CallbackQuery):
     status_label = "⭐ <b>کارت اصلی و پیش‌فرض تسویه حساب</b>" if is_default else "▫️ کارت فرعی"
     formatted = format_card_number(card["card_number"])
     bank = safe(card.get("bank_name") or "بانک")
+    calling_name = await db.get_user_calling_name(user_id) or "عزیز دلم"
     
     text = (
-        "💳 <b>مشخصات کارت بانکی:</b>\n\n"
+        f"💳 <b>مشخصات کارت بانکی شما، {safe(calling_name)} جانم:</b> ☕❤️\n\n"
         f"🏦 بانک: <b>{bank}</b>\n"
         f"🔢 شماره کارت: <code>{formatted}</code>\n"
         f"📌 وضعیت: {status_label}\n\n"
-        "💡 <i>در زمان تسویه، کارت ستاره‌دار به عنوان شماره حساب شما به اعضای گروه نمایش داده می‌شود.</i>"
+        "💡 <i>در زمان تسویه، این کارت ستاره‌دار به عنوان شماره حسابت به بچه‌ها نمایش داده می‌شه تا برات واریز کنن عزیز دلم.</i>"
     )
     await callback.message.edit_text(
         text,
@@ -164,17 +167,18 @@ async def handle_view_card_detail(callback: CallbackQuery):
 async def handle_set_default_card(callback: CallbackQuery):
     card_id = int(callback.data.split(":")[2])
     user_id = callback.from_user.id
+    calling_name = await db.get_user_calling_name(user_id) or "جان دلم"
     
     success = await db.set_default_card(user_id, card_id)
     if success:
-        await callback.answer("⭐ این کارت به عنوان کارت اصلی تسویه انتخاب شد!", show_alert=True)
+        await callback.answer(f"⭐ این کارت به عنوان کارت اصلی تسویه انتخاب شد {calling_name} قشنگم!", show_alert=True)
     else:
         await callback.answer("⚠️ خطا در تنظیم کارت اصلی!", show_alert=True)
         
     cards = await db.get_user_cards(user_id)
     lines = [
-        f"💳 <b>کارت‌های بانکی ثبت‌شده شما ({len(cards)} کارت):</b>\n",
-        "⭐ <i>کارت اصلی تغییر یافت و در تسویه‌ها نمایش داده خواهد شد.</i>\n"
+        f"💳 <b>کارت‌های بانکی ثبت‌شده شما ({len(cards)} کارت)، {safe(calling_name)} جانم:</b> ☕❤️\n",
+        "⭐ <i>کارت اصلیت با موفقیت تغییر یافت و در تسویه‌ها نمایش داده خواهد شد.</i>\n"
     ]
     for idx, c in enumerate(cards, 1):
         is_def = "⭐ <b>[کارت اصلی]</b>" if c["is_default"] else ""
@@ -191,6 +195,7 @@ async def handle_del_card_confirm(callback: CallbackQuery):
     await callback.answer()
     card_id = int(callback.data.split(":")[2])
     user_id = callback.from_user.id
+    calling_name = await db.get_user_calling_name(user_id) or "جان دلم"
     
     card = await db.get_user_card_by_id(user_id, card_id)
     if not card:
@@ -200,8 +205,8 @@ async def handle_del_card_confirm(callback: CallbackQuery):
     formatted = format_card_number(card["card_number"])
     bank = safe(card.get("bank_name") or "بانک")
     text = (
-        "⚠️ <b>تأییدیه حذف کارت بانکی:</b>\n\n"
-        f"آیا مطمئن هستید که می‌خواهید کارت <b>{bank}</b> (<code>{formatted}</code>) را حذف کنید؟"
+        f"⚠️ <b>تأییدیه حذف کارت بانکی، {safe(calling_name)} قشنگم:</b>\n\n"
+        f"کاملاً مطمئنی که می‌خوای کارت <b>{bank}</b> (<code>{formatted}</code>) رو حذف کنی عزیز دلم؟"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.card_delete_confirm_keyboard(card_id))
 
@@ -210,10 +215,11 @@ async def handle_del_card_confirm(callback: CallbackQuery):
 async def handle_del_card_do(callback: CallbackQuery):
     card_id = int(callback.data.split(":")[2])
     user_id = callback.from_user.id
+    calling_name = await db.get_user_calling_name(user_id) or "جان دلم"
     
     success = await db.delete_user_card(user_id, card_id)
     if success:
-        await callback.answer("🗑️ کارت با موفقیت حذف شد.", show_alert=True)
+        await callback.answer(f"🗑️ کارت با موفقیت حذف شد {calling_name} قشنگم.", show_alert=True)
     else:
         await callback.answer("⚠️ خطا در حذف کارت!", show_alert=True)
         
@@ -221,8 +227,8 @@ async def handle_del_card_do(callback: CallbackQuery):
     cards = await db.get_user_cards(user_id)
     if cards:
         lines = [
-            f"💳 <b>کارت‌های بانکی ثبت‌شده شما ({len(cards)} کارت):</b>\n",
-            "⭐ <i>کارت اصلی شما در زمان تسویه حساب به بدهکاران نمایش داده می‌شود.</i>\n"
+            f"💳 <b>کارت‌های بانکی ثبت‌شده شما ({len(cards)} کارت)، {safe(calling_name)} جانم:</b> ☕❤️\n",
+            "⭐ <i>کارت اصلی شما در زمان تسویه حساب به بچه‌ها نمایش داده می‌شود.</i>\n"
         ]
         for idx, c in enumerate(cards, 1):
             is_def = "⭐ <b>[کارت اصلی]</b>" if c["is_default"] else ""
@@ -234,8 +240,8 @@ async def handle_del_card_do(callback: CallbackQuery):
         text = "\n".join(lines)
     else:
         text = (
-            "💳 <b>تمام کارت‌های بانکی شما حذف شدند!</b>\n\n"
-            "می‌توانید با دکمه زیر شماره کارت جدید ثبت کنید:"
+            f"💳 <b>همه کارت‌های بانکیت حذف شدند {safe(calling_name)} جانم!</b> ☕❤️\n\n"
+            "هر وقت خواستی می‌تونی با دکمه زیر شماره کارت جدیدت رو با عشق ثبت کنی:"
         )
         markup = kb.card_menu_keyboard(has_card=False)
         

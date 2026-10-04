@@ -11,16 +11,17 @@ from states import NamePromptStates
 
 router = Router()
 
-HELP_TEXT = """
-☕ <b>راهنمای کافه دنگ؛ رفیق روزهای خرج و دورهمی!</b>
+def get_help_text(calling_name: str) -> str:
+    return f"""
+☕ <b>راهنمای کافه دنگ؛ همراه و پارتنر روزهای دورهمی!</b>
 
-کار با من خیلی ساده‌ست داداش! این چند تا نکته رو بدون تا حساب‌کتاب‌هاتون مثل آب خوردن حل شه:
+کار با من خیلی راحته {safe(calling_name)} قشنگم! این چند تا نکته رو بخون تا خیالت از بابت همه چی راحت باشه عزیز دلم:
 
 <b>۱. اول کارت‌های بانکیت رو ثبت کن:</b>
-برو تو بخش <b>«💳 شماره کارت بانکی من»</b> و هر چند تا کارتی که داری ثبت کن. کارت اصلیت رو هم ستاره‌دار کن تا وقتی از کسی طلبکار شدی، شماره کارتت مستقیم بیفته جلو چشمش و بهونه‌ای برای ندادن دنگ نمونه! 😉
+برو تو بخش <b>«💳 شماره کارت بانکی من»</b> و هر چند تا کارتی که داری ثبت کن. کارت اصلیت رو هم ستاره‌دار کن تا وقتی از کسی طلبکار شدی، شماره کارتت مستقیم بیفته جلو چشمش و خیالت راحت باشه جان دلم! 🌸
 
 <b>۲. گروه بساز و بچه‌ها رو بیار تو کافه:</b>
-با دکمه <b>«➕ ایجاد گروه دنگ جدید»</b> یه اسم باحال (یا رندوم خنده‌دار) بذار، بعد <b>«💌 کارت دعوت اعضا»</b> رو برای دوستانت بفرست تا با لقب‌های جالب و رندوم وارد جمع بشن.
+با دکمه <b>«➕ ایجاد گروه دنگ جدید»</b> یه اسم باحال (یا رندوم خنده‌دار) بذار، بعد <b>«💌 کارت دعوت اعضا»</b> رو برای دوستانت بفرست تا با لقب‌های جالب وارد جمع بشن.
 
 <b>۳. لحن گپ من رو تنظیم کن:</b>
 تو تنظیمات هر گروه می‌تونی بگی چطوری باهاتون حرف بزنم:
@@ -32,10 +33,10 @@ HELP_TEXT = """
 هر کی هر جا پیاده شد، دکمه <b>«💸 ثبت هزینه جدید»</b> رو می‌زنه. می‌تونی هزینه رو مساوی بین همه یا فقط بین کسایی که بودن تقسیم کنی.
 
 <b>۵. تسویه حساب و یادآوری:</b>
-تو بخش <b>«⚖️ فرمول تسویه حساب»</b> من با ریاضی هوشمند طوری حساب می‌کنم که با کمترین تعداد کارت‌به‌کارت همه چی صاف شه. حتی دکمه اعلام واریز و یادآوری به بدحساب‌ها هم داریم!
+تو بخش <b>«⚖️ فرمول تسویه حساب»</b> من با ریاضی هوشمند طوری حساب می‌کنم که با کمترین تعداد کارت‌به‌کارت همه چی صاف شه. حتی دکمه اعلام واریز و یادآوری هم داریم!
 
 <b>۶. صفر کردن حساب‌ها:</b>
-وقتی همه با هم صاف کردن، دکمه <b>«🔄 صفر کردن حساب‌ها»</b> رو بزنید تا دوره بسته شه و برای سفر یا دورهمی بعدی آماده شیم! 🌸
+وقتی همه با هم صاف کردن، دکمه <b>«🔄 صفر کردن حساب‌ها»</b> رو بزنید تا دوره بسته شه و برای برنامه بعدی آماده شیم قشنگم! ☕❤️
 """
 
 @router.message(CommandStart())
@@ -119,7 +120,7 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
 async def handle_name_input(message: Message, state: FSMContext):
     clean = clean_input_name(message.text or "")
     if not clean or not is_clean_persian_name(clean):
-        await message.answer("⚠️ لطفاً یک اسم معتبر فارسی (حداقل ۲ حرف و بدون اعداد یا علائم عجیب) بنویس رفیق:")
+        await message.answer("⚠️ جانِ دلم، لطفاً یک اسم معتبر فارسی (حداقل ۲ حرف و بدون اعداد یا علائم عجیب) برام بنویس:")
         return
 
     await state.update_data(temp_name=clean)
@@ -203,15 +204,17 @@ async def handle_name_edit_prompt(event: Message | CallbackQuery, state: FSMCont
 @router.callback_query(F.data == "nav:help")
 async def handle_help(event: Message | CallbackQuery, state: FSMContext):
     await state.clear()
+    calling_name = await db.get_user_calling_name(event.from_user.id) or "جانِ دلم"
+    help_text = get_help_text(calling_name)
     reply_markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="nav:main")]
     ])
     
     if isinstance(event, CallbackQuery):
         await event.answer()
-        await event.message.edit_text(HELP_TEXT, parse_mode="HTML", reply_markup=reply_markup)
+        await event.message.edit_text(help_text, parse_mode="HTML", reply_markup=reply_markup)
     else:
-        await event.answer(HELP_TEXT, parse_mode="HTML", reply_markup=reply_markup)
+        await event.answer(help_text, parse_mode="HTML", reply_markup=reply_markup)
 
 
 @router.message(Command("cancel"))

@@ -20,15 +20,23 @@ async def handle_my_groups(event: Message | CallbackQuery, state: FSMContext):
     await state.clear()
     user_id = event.from_user.id
     groups = await db.get_user_groups(user_id)
+    calling_name = await db.get_user_calling_name(user_id) or "جانِ دلم"
     
     if not groups:
-        text = "📭 شما در حال حاضر در هیچ گروهی عضو نیستید.\nبا زدن دکمه زیر می‌توانید اولین گروه دنگ خود را بسازید:"
+        text = (
+            f"هنوز تو هیچ دورهمی و گروهی نیستی <b>{safe(calling_name)}</b> قشنگم! ☕❤️\n\n"
+            "بیا با هم اولین گروه دنگ رو بسازیم تا رفقات رو بیاری و تمام حساب‌کتاب‌ها رو برات با عشق راست‌وریس کنم:\n"
+            "👇 روی دکمه زیر بزن تا با هم شروع کنیم عزیز دلم:"
+        )
         markup = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="➕ ساخت گروه جدید", callback_data="nav:new_group")],
             [InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="nav:main")]
         ])
     else:
-        text = "👥 <b>گروه‌های دنگ شما:</b>\nبرای مشاهده یا مدیریت، گروه مورد نظر را انتخاب کنید:"
+        text = (
+            f"👥 <b>دورهمی‌های شما {safe(calling_name)} جانم:</b> ☕❤️\n\n"
+            "روی هر گروهی که دوست داری بزن تا با هم بریم توی داشبوردش و به حساب‌کتاب‌ها برسیم:"
+        )
         markup = kb.groups_list_keyboard(groups)
         
     if isinstance(event, CallbackQuery):
@@ -42,9 +50,10 @@ async def handle_my_groups(event: Message | CallbackQuery, state: FSMContext):
 @router.message(Command("newgroup"))
 async def handle_new_group_start(event: Message | CallbackQuery, state: FSMContext):
     await state.clear()
+    calling_name = await db.get_user_calling_name(event.from_user.id) or "عزیز دلم"
     text = (
-        "🏷️ <b>انتخاب نام برای گروه دنگ جدید:</b>\n\n"
-        "می‌توانید یک اسم رندوم خنده‌دار (+18) انتخاب کنید یا اسم دلخواه خودتان را بنویسید:"
+        f"🏷️ <b>انتخاب اسم برای دورهمی جدید، {safe(calling_name)} قشنگم:</b> ☕❤️\n\n"
+        "دوست داری یه اسم رندوم و خنده‌دار (+18) برات پیشنهاد بدم یا خودت یه اسم قشنگ تو ذهنت داری؟"
     )
     markup = kb.group_naming_choice_keyboard()
     
@@ -62,9 +71,9 @@ async def handle_random_group_name(callback: CallbackQuery, state: FSMContext):
     await state.update_data(suggested_title=random_name)
     
     text = (
-        "🎲 <b>اسم رندوم پیشنهادی (+18):</b>\n\n"
-        f"🔥 <b>«{safe(random_name)}»</b>\n\n"
-        "می‌خواهید گروه با همین نام ساخته شود یا یکی دیگر پیشنهاد دهم؟"
+        "🎲 <b>اسم پیشنهادی برای دورهمیتون:</b> 🔥\n\n"
+        f"«<b>{safe(random_name)}</b>» 😈\n\n"
+        "نظرت چیه جانِ دلم؟ همین رو ثبت کنم یا یکی دیگه برات رو کنم؟"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.group_naming_confirm_keyboard())
 
@@ -82,8 +91,8 @@ async def handle_custom_group_name_prompt(callback: CallbackQuery, state: FSMCon
     await callback.answer()
     await state.set_state(GroupCreationStates.waiting_for_title)
     text = (
-        "✍️ لطفاً <b>نام گروه دنگ</b> را تایپ و ارسال کنید:\n"
-        "(مثلاً: سفر شمال 🌊، هم‌خونه‌ها 🏠، ناهار شرکت 🍔)"
+        "✍️ <b>اسم دورهمی قشنگت رو برام بنویس و بفرست جانِ دلم:</b> ☕❤️\n"
+        "(مثلاً: سفر شمال 🌊، دورهمی کافه 🥐، ناهار رفقا 🍔)"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.cancel_keyboard())
 
@@ -92,7 +101,7 @@ async def handle_custom_group_name_prompt(callback: CallbackQuery, state: FSMCon
 async def handle_new_group_title(message: Message, state: FSMContext, bot: Bot):
     title = (message.text or "").strip()
     if len(title) < 2 or len(title) > 60:
-        await message.answer("⚠️ لطفاً نامی بین ۲ تا ۶۰ کاراکتر وارد کنید:")
+        await message.answer("⚠️ جانِ دلم، لطفاً یک اسم بین ۲ تا ۶۰ حرف برام بنویس:")
         return
 
     await finish_group_creation(message, message.from_user, title, state, bot)
@@ -105,16 +114,17 @@ async def finish_group_creation(msg_target: Message, user, title: str, state: FS
 
     members = await db.get_group_members(group_id)
     creator_nick = members[0].get("nickname", "رئیس") if members else "رئیس"
+    calling_name = await db.get_user_calling_name(user.id) or "قشنگم"
 
     bot_info = await bot.get_me()
     invite_link = f"https://t.me/{bot_info.username}?start=join_{invite_code}"
 
     text = (
-        f"🎉 دورهمی <b>«{safe(title)}»</b> با موفقیت در <b>کافه دنگ</b> ایجاد شد!\n"
-        f"👤 نام شما در این گروه: <b>«{safe(creator_nick)}»</b>\n\n"
+        f"🎉 <b>مبارکت باشه {safe(calling_name)} قشنگم! دورهمی «{safe(title)}» با عشق ساخته شد</b> ☕❤️✨\n\n"
+        f"👤 نام شما در این جمع: <b>«{safe(creator_nick)}»</b>\n\n"
         "💌 <b>کارت دعوت ورود اعضا:</b>\n"
         f"👉 <a href=\"{invite_link}\"><b>[ ☕ برای ورود و عضویت در گروه لمس کنید ]</b></a>\n\n"
-        "💡 <i>از داخل منوی گروه، دکمه «💌 کارت دعوت اعضا» را بزنید تا کارت شیک و آماده فوروارد برای دوستانتان تولید شود!</i>"
+        "💡 <i>عزیز دلم، از داخل منوی گروه، دکمه «💌 کارت دعوت اعضا» رو بزن تا برات کارت شیک آماده کنم و بفرستی برای دوستات!</i>"
     )
     if hasattr(msg_target, "edit_text") and msg_target.from_user.is_bot:
         await msg_target.edit_text(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group_id, is_creator=True))
@@ -184,15 +194,16 @@ async def handle_members_manage(callback: CallbackQuery):
     
     # آیا عضوی غیر از سرگروه وجود دارد؟
     other_members = [m for m in members if m["id"] != group["created_by"]]
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
     if not other_members:
-        text = "👑 شما تنها عضو این گروه هستید و عضو دیگری برای اخراج وجود ندارد."
+        text = f"👑 فقط خودت توی این جمع هستی <b>{safe(calling_name)}</b> جانم! عضو دیگه‌ای برای حذف وجود نداره ❤️"
         markup = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
         ])
     else:
         text = (
-            f"👑 <b>مدیریت اعضای گروه «{safe(group['title'])}»:</b>\n\n"
-            "روی هر عضوی که می‌خواهید از گروه حذف شود کلیک کنید:"
+            f"👑 <b>مدیریت اعضای دورهمی «{safe(group['title'])}»، {safe(calling_name)} جانم:</b> ☕❤️\n\n"
+            "روی هر عضوی که مدنظرته کلیک کن تا وضعیتش رو با هم بررسی کنیم:"
         )
         markup = kb.members_kick_keyboard(group_id, members, group["created_by"])
         
@@ -207,13 +218,14 @@ async def handle_kick_confirm(callback: CallbackQuery):
     
     group = await db.get_group_by_id(group_id)
     if group["created_by"] != callback.from_user.id:
-        await callback.answer("⚠️ فقط سرگروه مجاز است!", show_alert=True)
+        await callback.answer("⚠️ فقط سرگروه مجاز است عزیز دلم!", show_alert=True)
         return
         
     await callback.answer()
     members = await db.get_group_members(group_id)
     target = next((m for m in members if m["id"] == member_id), None)
     target_name = safe(target.get("display_name", target["full_name"])) if target else "این کاربر"
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
     
     # بررسی بدهی یا طلب تسویه‌نشده این عضو
     balance_warning = ""
@@ -230,8 +242,8 @@ async def handle_kick_confirm(callback: CallbackQuery):
                 balance_warning = f"\n\n💰 <b>توجه:</b> این عضو <b>{format_amount(-net)} بدهکار</b> است و هنوز حسابش تسویه نشده!"
     
     text = (
-        f"⚠️ <b>تأییدیه اخراج عضو:</b>\n\n"
-        f"آیا مطمئن هستید که می‌خواهید <b>{target_name}</b> را از گروه اخراج کنید؟"
+        f"⚠️ <b>بررسی حذف عضو، {safe(calling_name)} جانم:</b>\n\n"
+        f"کاملاً مطمئنی که می‌خوای <b>{target_name}</b> رو از جمع «{safe(group['title'])}» حذف کنی عزیز دلم؟"
         f"{balance_warning}"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.kick_confirm_keyboard(group_id, member_id))
@@ -245,20 +257,20 @@ async def handle_kick_do(callback: CallbackQuery, bot: Bot):
     
     group = await db.get_group_by_id(group_id)
     if group["created_by"] != callback.from_user.id:
-        await callback.answer("⚠️ فقط سرگروه مجاز است!", show_alert=True)
+        await callback.answer("⚠️ فقط سرگروه مجاز است عزیز دلم!", show_alert=True)
         return
         
     members = await db.get_group_members(group_id)
     target = next((m for m in members if m["id"] == member_id), None)
     
     await db.remove_group_member(group_id, member_id)
-    await callback.answer("✅ عضو با موفقیت از گروه اخراج شد.", show_alert=True)
+    await callback.answer("✅ عضو با موفقیت از گروه حذف شد جان دلم.", show_alert=True)
     
     # ارسال پیام اطلاع‌رسانی به کاربر اخراج‌شده در صورت امکان
     try:
         await bot.send_message(
             member_id,
-            f"ℹ️ شما توسط سرگروه از گروه <b>«{safe(group['title'])}»</b> حذف شدید.",
+            f"ℹ️ عزیز دلم، شما توسط سرگروه از دورهمی <b>«{safe(group['title'])}»</b> کنار گذاشته شدید.",
             parse_mode="HTML"
         )
     except Exception:
@@ -267,13 +279,14 @@ async def handle_kick_do(callback: CallbackQuery, bot: Bot):
     # بازگشت به لیست مدیریت اعضا
     members_updated = await db.get_group_members(group_id)
     other_members = [m for m in members_updated if m["id"] != group["created_by"]]
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
     if not other_members:
-        text = "👑 عضو دیگری برای اخراج در گروه وجود ندارد."
+        text = f"👑 عضو دیگری برای حذف در این گروه وجود ندارد {safe(calling_name)} جانم."
         markup = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
         ])
     else:
-        text = f"👑 <b>مدیریت اعضای گروه «{safe(group['title'])}»:</b>"
+        text = f"👑 <b>مدیریت اعضای گروه «{safe(group['title'])}»، {safe(calling_name)} جانم:</b>"
         markup = kb.members_kick_keyboard(group_id, members_updated, group["created_by"])
         
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
@@ -288,14 +301,15 @@ async def handle_delete_group_confirm(callback: CallbackQuery):
         return
         
     if group["created_by"] != callback.from_user.id:
-        await callback.answer("⚠️ فقط سرگروه مجاز به حذف گروه است!", show_alert=True)
+        await callback.answer("⚠️ فقط سرگروه مجاز به حذف گروه است عزیز دلم!", show_alert=True)
         return
         
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
     await callback.answer()
     text = (
-        f"⚠️ <b>هشدار حذف کامل گروه «{safe(group['title'])}»:</b>\n\n"
-        "آیا کاملاً مطمئن هستید که می‌خواهید این گروه را حذف کنید؟\n\n"
-        "• تمام سوابق، اعضا، لقب‌ها، دنگ‌ها و هزینه‌های این گروه به طور کامل پاک خواهند شد و این عملیات برگشت‌پذیر نیست!"
+        f"⚠️ <b>هشدار حذف کامل دورهمی «{safe(group['title'])}»، {safe(calling_name)} جانم:</b> ☕💔\n\n"
+        "کاملاً مطمئنی که می‌خوای این گروه رو پاک کنی عزیز دلم؟\n\n"
+        "• تمام سوابق، دنگ‌ها، اعضا و حساب‌کتاب‌های این جمع پاک می‌شن و دیگه قابل برگشت نیست فدات شم!"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.group_delete_confirm_keyboard(group_id))
 
@@ -309,32 +323,33 @@ async def handle_delete_group_do(callback: CallbackQuery, state: FSMContext):
         return
         
     if group["created_by"] != callback.from_user.id:
-        await callback.answer("⚠️ فقط سرگروه مجاز به حذف گروه است!", show_alert=True)
+        await callback.answer("⚠️ فقط سرگروه مجاز به حذف گروه است عزیز دلم!", show_alert=True)
         return
         
     success = await db.delete_group(group_id, callback.from_user.id)
     if success:
-        await callback.answer(f"✅ گروه «{group['title']}» با موفقیت حذف شد.", show_alert=True)
+        await callback.answer(f"✅ دورهمی «{group['title']}» با موفقیت حذف شد جان دلم.", show_alert=True)
     else:
         await callback.answer("⚠️ خطا در حذف گروه!", show_alert=True)
         
     await handle_my_groups(callback, state)
 
 
-
 @router.callback_query(F.data.startswith("grp:tone_menu:"))
 async def handle_tone_menu(callback: CallbackQuery):
     await callback.answer()
     group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
     current_tone = await db.get_group_tone(group_id)
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "قشنگم"
     
     text = (
-        "🎭 <b>انتخاب شیوه و لحن مکالمه ربات برای این گروه:</b>\n\n"
-        "می‌توانید تعیین کنید ربات در این گروه با چه سبکی پیام‌ها و یادآوری‌ها را ارسال کند:\n\n"
-        "• 👔 <b>رسمی و اداری:</b> مودبانه، کاملاً محترمانه و حسابداری شیک.\n"
-        "• 😊 <b>دوستانه و محاوره:</b> صمیمی، رفاقتی، عامیانه و راحت.\n"
-        "• 🔞 <b>بی‌ادب و خفن (+18):</b> شوخی‌های خاک‌برسری، تیکه‌انداز، فحش‌های رفاقتی و دنگ‌گیری زوری!\n\n"
-        "لحن مورد نظر خود را انتخاب کنید:"
+        f"🎭 <b>انتخاب لحن مکالمه برای دورهمی «{safe(group['title'] if group else '')}»، {safe(calling_name)} قشنگم:</b> ☕❤️\n\n"
+        "دوست داری تو این گروه چطوری با شما و بچه‌ها حرف بزنم جانِ دلم؟\n\n"
+        "• 👔 <b>رسمی و اداری:</b> کاملاً محترمانه، مودبانه و اداری.\n"
+        "• 😊 <b>دوستانه و خودمونی:</b> صمیمی، رفاقتی و عامیانه.\n"
+        "• 🔞 <b>بی‌ادب و خفن (+18):</b> شوخی‌های تند، تیکه‌انداز و دنگ‌گیری زوری! 😈\n\n"
+        "لحن مورد نظرت رو انتخاب کن عزیز دلم:"
     )
     await callback.message.edit_text(
         text,
@@ -351,12 +366,12 @@ async def handle_set_tone(callback: CallbackQuery):
     
     await db.set_group_tone(group_id, new_tone)
     tone_title = TONE_NAMES.get(new_tone, new_tone)
-    await callback.answer(f"✅ لحن ربات به «{tone_title}» تغییر یافت!", show_alert=True)
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+    await callback.answer(f"✅ لحن گروه به «{tone_title}» تغییر یافت جان دلم!", show_alert=True)
     
-    # بازگشت به منوی تغییر لحن با علامت تیک به‌روز
     text = (
-        f"✅ لحن ربات با موفقیت روی <b>{tone_title}</b> تنظیم شد.\n\n"
-        "از این پس تمام پیام‌ها، گزارش‌ها و یادآوری‌ها با این لحن برای اعضا ارسال خواهد شد."
+        f"✅ <b>لحن صحبت در این گروه با عشق روی «{tone_title}» تنظیم شد {safe(calling_name)} جانم!</b> ☕❤️\n\n"
+        "از این به بعد تمام پیام‌ها و یادآوری‌های این دورهمی به همین سبک ارسال می‌شه عزیز دلم."
     )
     await callback.message.edit_text(
         text,
@@ -428,7 +443,7 @@ async def handle_group_invite_forward(callback: CallbackQuery, bot: Bot):
     ])
     
     await callback.message.answer(card_text, parse_mode="HTML", reply_markup=markup)
-    await callback.answer("✅ کارت دعوت با موفقیت تولید و ارسال شد! آن را برای دوستانتان فوروارد کنید.", show_alert=True)
+    await callback.answer("✅ کارت دعوت با عشق برات آماده و ارسال شد جان دلم! می‌تونی برای رفقات بفرستیش.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("grp:invite_regen:"))
@@ -436,7 +451,7 @@ async def handle_group_invite_regen(callback: CallbackQuery, bot: Bot):
     group_id = int(callback.data.split(":")[2])
     group = await db.get_group_by_id(group_id)
     if not group or group["created_by"] != callback.from_user.id:
-        await callback.answer("⚠️ فقط سرگروه مجاز به تغییر لینک دعوت است!", show_alert=True)
+        await callback.answer("⚠️ فقط سرگروه مجاز به تغییر لینک دعوت است عزیز دلم!", show_alert=True)
         return
 
     new_code = await db.regenerate_invite_code(group_id, callback.from_user.id)
@@ -444,7 +459,7 @@ async def handle_group_invite_regen(callback: CallbackQuery, bot: Bot):
         await callback.answer("خطا در ایجاد لینک جدید!", show_alert=True)
         return
 
-    await callback.answer("✅ لینک قبلی باطل و کارت دعوت جدید صادر شد!", show_alert=True)
+    await callback.answer("✅ لینک قبلی باطل و کارت دعوت جدید با عشق صادر شد عزیز دلم!", show_alert=True)
     bot_info = await bot.get_me()
     invite_link = f"https://t.me/{bot_info.username}?start=join_{new_code}"
 
