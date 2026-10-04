@@ -40,7 +40,7 @@ async def _do_backup():
         async with aiosqlite.connect(DB_PATH) as db:
             db.row_factory = aiosqlite.Row
             dump = {}
-            for table in ["users", "groups", "group_members", "expenses", "expense_shares"]:
+            for table in ["users", "groups", "group_members", "expenses", "expense_shares", "daily_quotes_log"]:
                 async with db.execute(f"SELECT * FROM {table}") as cursor:
                     rows = await cursor.fetchall()
                     dump[table] = [dict(r) for r in rows]
@@ -134,6 +134,12 @@ async def restore_from_cloud():
                     INSERT OR REPLACE INTO expense_shares (id, expense_id, user_id, share_amount)
                     VALUES (?, ?, ?, ?)
                 """, (es["id"], es["expense_id"], es["user_id"], es["share_amount"]))
+                
+            for dq in dump.get("daily_quotes_log", []):
+                await db.execute("""
+                    INSERT OR REPLACE INTO daily_quotes_log (id, quote_index, sent_date)
+                    VALUES (?, ?, ?)
+                """, (dq["id"], dq["quote_index"], dq["sent_date"]))
                 
             await db.execute("PRAGMA foreign_keys = ON;")
             await db.commit()

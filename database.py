@@ -84,6 +84,15 @@ async def init_db():
             )
         """)
 
+        # جدول ثبت جملات ارسالی جهت عدم تکرار
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS daily_quotes_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_index INTEGER NOT NULL,
+                sent_date TEXT NOT NULL
+            )
+        """)
+
         await db.commit()
     
     # بازیابی خودکار داده‌ها در سرورهای ابری
@@ -209,6 +218,22 @@ async def get_all_user_ids() -> list[int]:
         async with db.execute("SELECT id FROM users") as cursor:
             rows = await cursor.fetchall()
             return [r[0] for r in rows]
+
+
+async def get_recent_quote_indices(limit: int = 35) -> list[int]:
+    """دریافت لیست شناسه‌های جملات اخیراً ارسال شده جهت عدم تکرار"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT quote_index FROM daily_quotes_log ORDER BY id DESC LIMIT ?", (limit,)) as cursor:
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows]
+
+
+async def log_sent_quote(quote_index: int, sent_date: str):
+    """ثبت لاگ ارسال جمله انگیزشی امروز"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT INTO daily_quotes_log (quote_index, sent_date) VALUES (?, ?)", (quote_index, sent_date))
+        await db.commit()
+        schedule_cloud_backup()
 
 
 
