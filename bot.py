@@ -22,6 +22,7 @@ from config import BOT_TOKEN, PROXY_URL
 from database import init_db
 from handlers import setup_routers
 from motivational import start_daily_quote_scheduler
+from cloud_db_sync import start_periodic_cloud_backup, backup_to_cloud
 
 # تنظیم لاگ‌ها
 logging.basicConfig(
@@ -115,12 +116,20 @@ async def main():
     
     # راه‌اندازی تسک پس‌زمینه ارسال جملات انگیزشی روزانه ساعت ۹ صبح
     scheduler_task = asyncio.create_task(start_daily_quote_scheduler(bot))
+    # راه‌اندازی تسک بکاپ‌گیری دوره‌ای هر ۵ دقیقه در پس‌زمینه
+    periodic_sync_task = asyncio.create_task(start_periodic_cloud_backup(300))
 
     try:
         # حذف پیام‌های صف قبل از استارت
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
+        logger.info("💾 در حال ذخیره نسخه پشتیبان نهایی دیتابیس در فضای ابری قبل از خاموش شدن...")
+        try:
+            await backup_to_cloud()
+        except Exception as e:
+            logger.error(f"خطا در بکاپ نهایی: {e}")
+        periodic_sync_task.cancel()
         scheduler_task.cancel()
         await web_runner.cleanup()
         await bot.session.close()

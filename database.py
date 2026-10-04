@@ -566,7 +566,7 @@ async def add_user_card(user_id: int, card_number: str, bank_name: str, card_tit
                 await db.execute("UPDATE users SET card_number = ?, bank_name = ? WHERE id = ?", (card_number, bank_name, user_id))
                 
             await db.commit()
-            schedule_cloud_backup()
+            schedule_cloud_backup(immediate=True)
             return card_id, True
         except aiosqlite.IntegrityError:
             # کارت قبلاً برای این کاربر ثبت شده
@@ -610,7 +610,7 @@ async def set_default_card(user_id: int, card_id: int) -> bool:
         await db.execute("UPDATE user_cards SET is_default = 1 WHERE id = ? AND user_id = ?", (card_id, user_id))
         await db.execute("UPDATE users SET card_number = ?, bank_name = ? WHERE id = ?", (card_num, bank, user_id))
         await db.commit()
-        schedule_cloud_backup()
+        schedule_cloud_backup(immediate=True)
         return True
 
 
@@ -636,7 +636,7 @@ async def delete_user_card(user_id: int, card_id: int) -> bool:
                     await db.execute("UPDATE users SET card_number = NULL, bank_name = NULL WHERE id = ?", (user_id,))
 
         await db.commit()
-        schedule_cloud_backup()
+        schedule_cloud_backup(immediate=True)
         return True
 
 

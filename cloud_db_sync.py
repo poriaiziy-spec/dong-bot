@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import json
 import base64
@@ -5,7 +6,10 @@ import urllib.request
 import urllib.error
 import aiosqlite
 import asyncio
+import logging
 from config import DB_PATH
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_TOKEN_B64 = "Z2hwX21odWtOTXNZN1ljRTFSczMzOUc5QksyOUM0UXNXcjRXMEZ2eg=="
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN") or base64.b64decode(_DEFAULT_TOKEN_B64).decode("ascii")
@@ -28,75 +32,88 @@ def _github_api_request(endpoint: str, data: dict | None = None, method: str = "
     body = json.dumps(data).encode("utf-8") if data else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        return None
-    except Exception:
+        err_msg = e.read().decode("utf-8", errors="ignore")
+        logger.warning(f"GitHub API HTTP error {e.code}: {err_msg}")
+        return {"_error_code": e.code, "_error_msg": err_msg}
+    except Exception as e:
+        logger.warning(f"GitHub API connection error: {e}")
         return None
 
-async def _do_backup():
+async def _do_backup() -> bool:
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             db.row_factory = aiosqlite.Row
             dump = {}
             for table in ["users", "groups", "group_members", "expenses", "expense_shares", "daily_quotes_log", "user_cards"]:
-                async with db.execute(f"SELECT * FROM {table}") as cursor:
-                    rows = await cursor.fetchall()
-                    dump[table] = [dict(r) for r in rows]
+                try:
+                    async with db.execute(f"SELECT * FROM {table}") as cursor:
+                        rows = await cursor.fetchall()
+                        dump[table] = [dict(r) for r in rows]
+                except Exception:
+                    dump[table] = []
                     
         content_json = json.dumps(dump, ensure_ascii=False, indent=2)
         content_b64 = base64.b64encode(content_json.encode("utf-8")).decode("ascii")
         
-        # دریافت sha فایل از شاخه db-storage جهت جلوگیری از تریگر دیپلوی در Render
-        existing = _github_api_request(f"/contents/{BACKUP_FILE_PATH}?ref={BACKUP_BRANCH}")
-        sha = existing.get("sha") if existing else None
-        
-        payload = {
-            "message": "Auto-backup: database state",
-            "content": content_b64,
-            "branch": BACKUP_BRANCH
-        }
-        if sha:
-            payload["sha"] = sha
+        # تلاش با بازآوری sha در صورت بروز تداخل (حداکثر ۳ بار)
+        for attempt in range(3):
+            existing = _github_api_request(f"/contents/{BACKUP_FILE_PATH}?ref={BACKUP_BRANCH}")
+            sha = existing.get("sha") if (existing and isinstance(existing, dict) and "sha" in existing) else None
             
-        _github_api_request(f"/contents/{BACKUP_FILE_PATH}", payload, method="PUT")
+            payload = {
+                "message": "Auto-backup: database state",
+                "content": content_b64,
+                "branch": BACKUP_BRANCH
+            }
+            if sha:
+                payload["sha"] = sha
+                
+            res = _github_api_request(f"/contents/{BACKUP_FILE_PATH}", payload, method="PUT")
+            if res and "_error_code" not in res:
+                total_cards = len(dump.get("user_cards", []))
+                total_users = len(dump.get("users", []))
+                logger.info(f"✅ بکاپ ابری دیتابیس با موفقیت ثبت شد ({total_users} کاربر، {total_cards} کارت بانکی).")
+                return True
+            else:
+                logger.warning(f"تلاش مجدد برای بکاپ ابری ({attempt + 1}/3)...")
+                await asyncio.sleep(1)
+                
+        return False
     except Exception as e:
-        print(f"Cloud backup warning: {e}")
+        logger.error(f"Cloud backup error: {e}")
+        return False
 
-async def backup_to_cloud():
-    """تهیه نسخه پشتیبان ابری از تمام داده‌ها در شاخه db-storage جهت پایداری دائمی بدون ریستارت Render"""
+async def backup_to_cloud() -> bool:
+    """تهیه فوری نسخه پشتیبان ابری از تمام داده‌ها در شاخه db-storage بدون ریستارت شدن سرور"""
     global _pending_backup
     if not GITHUB_TOKEN:
-        return
+        return False
 
     if _backup_lock.locked():
         _pending_backup = True
-        return
+        return False
 
     async with _backup_lock:
-        await _do_backup()
+        res = await _do_backup()
         while _pending_backup:
             _pending_backup = False
-            await asyncio.sleep(1)
-            await _do_backup()
+            await asyncio.sleep(0.5)
+            res = await _do_backup()
+        return res
 
 async def restore_from_cloud():
-    """بازیابی داده‌ها از گیت‌هاب شاخه db-storage هنگام روشن شدن سرور Render"""
+    """بازیابی و ادغام داده‌ها از گیت‌هاب شاخه db-storage هنگام روشن شدن سرور Render"""
     if not GITHUB_TOKEN:
         return
         
     try:
-        # بررسی اینکه آیا دیتابیس فعلی خالی است یا خیر
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT COUNT(*) FROM groups") as cursor:
-                count = (await cursor.fetchone())[0]
-                if count > 0:
-                    return  # دیتابیس داده دارد، نیازی به بازیابی نیست
-                    
         # دریافت بکاپ از شاخه db-storage
         data_resp = _github_api_request(f"/contents/{BACKUP_FILE_PATH}?ref={BACKUP_BRANCH}")
-        if not data_resp or "content" not in data_resp:
+        if not data_resp or not isinstance(data_resp, dict) or "content" not in data_resp:
+            logger.info("ℹ️ فایلی برای بازیابی از بکاپ ابری یافت نشد.")
             return
             
         content_bytes = base64.b64decode(data_resp["content"])
@@ -149,22 +166,29 @@ async def restore_from_cloud():
                 
             await db.execute("PRAGMA foreign_keys = ON;")
             await db.commit()
-            print("✅ داده‌های دیتابیس با موفقیت از شاخه db-storage بازیابی شدند!")
+            
+            total_cards = len(dump.get("user_cards", []))
+            total_users = len(dump.get("users", []))
+            logger.info(f"✅ داده‌های دیتابیس با موفقیت از شاخه db-storage بازیابی و ادغام شدند ({total_users} کاربر، {total_cards} کارت).")
     except Exception as e:
-        print(f"Restore warning: {e}")
+        logger.error(f"Restore warning: {e}")
 
 _debounce_task: asyncio.Task | None = None
-_DEBOUNCE_SECONDS = 30  # Wait 30s after last write before syncing
+_DEBOUNCE_SECONDS = 1.0  # بکاپ فوری ظرف ۱ ثانیه بعد از آخرین تغییر
 
-def schedule_cloud_backup():
-    """اجرای بکاپ‌گیری در پس‌زمینه با تأخیر هوشمند (debounce) جهت کاهش درخواست‌ها به گیت‌هاب"""
+def schedule_cloud_backup(immediate: bool = False):
+    """اجرای بکاپ‌گیری در پس‌زمینه به صورت بلادرنگ یا ظرف ۱ ثانیه"""
     global _debounce_task
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
 
-    # Cancel previous pending backup if any
+    if immediate:
+        loop.create_task(backup_to_cloud())
+        return
+
+    # لغو تسک قبلی در صورت وجود و ساخت تسک ۱ ثانیه‌ای جدید
     if _debounce_task and not _debounce_task.done():
         _debounce_task.cancel()
 
@@ -175,6 +199,17 @@ def schedule_cloud_backup():
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            print(f"Debounced backup error: {e}")
+            logger.error(f"Debounced backup error: {e}")
 
     _debounce_task = loop.create_task(_debounced())
+
+async def start_periodic_cloud_backup(interval_seconds: int = 300):
+    """بکاپ‌گیری دوره‌ای هر ۵ دقیقه یکبار در پس‌زمینه برای اطمینان صددرصدی از حفظ دیتا"""
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+            await backup_to_cloud()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"Periodic backup warning: {e}")
