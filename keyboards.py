@@ -8,6 +8,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="👥 گروه‌های من", callback_data="nav:my_groups")
         ],
         [
+            InlineKeyboardButton(text="💳 شماره کارت بانکی من", callback_data="nav:my_card"),
             InlineKeyboardButton(text="ℹ️ راهنمای استفاده", callback_data="nav:help")
         ]
     ]
@@ -48,13 +49,52 @@ def group_dashboard_keyboard(group_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🔄 صفر کردن حساب‌ها", callback_data=f"grp:zero_confirm:{group_id}")
         ],
         [
-            InlineKeyboardButton(text="🔗 لینک دعوت به گروه", callback_data=f"grp:invite:{group_id}")
+            InlineKeyboardButton(text="🎭 تغییر لحن ربات", callback_data=f"grp:tone_menu:{group_id}"),
+            InlineKeyboardButton(text="🔗 لینک دعوت", callback_data=f"grp:invite:{group_id}")
         ],
         [
             InlineKeyboardButton(text="🔙 بازگشت به لیست گروه‌ها", callback_data="nav:my_groups")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def tone_selection_keyboard(group_id: int, current_tone: str = "friendly") -> InlineKeyboardMarkup:
+    """انتخاب لحن مکالمه ربات برای گروه"""
+    tones = [
+        ("formal", "👔 رسمی و اداری"),
+        ("friendly", "😊 دوستانه و محاوره"),
+        ("toxic", "🔞 بی‌ادب و خفن (+18)")
+    ]
+    buttons = []
+    for t_key, t_label in tones:
+        selected_mark = " ✅" if t_key == current_tone else ""
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"{t_label}{selected_mark}",
+                callback_data=f"grp:set_tone:{group_id}:{t_key}"
+            )
+        ])
+    buttons.append([
+        InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def card_menu_keyboard(has_card: bool) -> InlineKeyboardMarkup:
+    """منوی مدیریت کارت بانکی کاربر"""
+    buttons = [
+        [InlineKeyboardButton(text="✏️ ثبت / ویرایش شماره کارت", callback_data="card:edit")]
+    ]
+    if has_card:
+        buttons.append([
+            InlineKeyboardButton(text="🗑️ حذف شماره کارت", callback_data="card:delete")
+        ])
+    buttons.append([
+        InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="nav:main")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
 
 
 def group_naming_choice_keyboard() -> InlineKeyboardMarkup:

@@ -76,6 +76,9 @@ async def handle_group_report(callback: CallbackQuery):
     await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=markup)
 
 
+from tones import render_reminder_msg, render_payment_notice, render_settlement_title
+from bank_utils import format_card_number
+
 @router.callback_query(F.data.startswith("grp:settle_calc:"))
 async def handle_settlement_calculation(callback: CallbackQuery):
     await callback.answer()
@@ -88,38 +91,186 @@ async def handle_settlement_calculation(callback: CallbackQuery):
         
     members = await db.get_group_members(group_id)
     active_expenses = await db.get_active_expenses(group_id)
+    group_tone = await db.get_group_tone(group_id)
     
     calc_res = calculate_group_balances(members, active_expenses)
     settlements = calc_res["settlements"]
     
+    markup_buttons = []
+    
     if not settlements:
         text = (
-            f"⚖️ <b>فرمول تسویه حساب گروه «{group['title']}»:</b>\n\n"
+            f"{render_settlement_title(group_tone, group['title'])}\n"
             "🎉 <b>همه حساب‌ها صاف است!</b>\n"
-            "هیچ بدهی ثبت شده‌ای وجود ندارد و کسی به فرد دیگر بدهکار نیست."
+            "هیچ بدهی ثبت شده‌ای وجود ندارد و کسی به دیگری بدهکار نیست."
         )
     else:
         lines = [
-            f"⚖️ <b>فرمول تسویه حساب نهایی گروه «{group['title']}»</b>\n",
-            "💡 <i>با انجام تراکنش‌های زیر (کمترین تعداد جابجایی پول)، تمام حساب‌ها کاملاً صاف و تسویه می‌شوند:</i>\n"
+            f"{render_settlement_title(group_tone, group['title'])}",
+            "💡 <i>تراکنش‌های بهینه جهت صاف شدن کامل حساب‌ها با کمترین تعداد جابجایی:</i>\n"
         ]
         
         for idx, item in enumerate(settlements, 1):
-            payer_name = item["from_user"].get("display_name", item["from_user"]["full_name"])
-            receiver_name = item["to_user"].get("display_name", item["to_user"]["full_name"])
+            debtor = item["from_user"]
+            creditor = item["to_user"]
+            debtor_name = debtor.get("display_name", debtor["full_name"])
+            creditor_name = creditor.get("display_name", creditor["full_name"])
             amt = format_amount(item["amount"])
-            lines.append(f"{idx}️⃣ <b>{payer_name}</b> ➡️ باید <b>{amt}</b> به <b>{receiver_name}</b> بدهد.")
             
-        lines.append("\n✅ <i>پس از انجام این واریزی‌ها، دکمه «صفر کردن حساب‌ها» را بزنید تا دوره بسته شود.</i>")
+            card_num = creditor.get("card_number")
+            bank_name = creditor.get("bank_name")
+            
+            if card_num:
+                card_str = f"<code>{format_card_number(card_num)}</code> ({bank_name or 'بانک'})"
+            else:
+                card_str = "<i>(هنوز کارتی ثبت نکرده)</i>"
+                
+            lines.append(
+                f"{idx}️⃣ <b>{debtor_name}</b> ➡️ باید <b>{amt}</b> به <b>{creditor_name}</b> بدهد.\n"
+                f"   💳 شماره کارت: {card_str}\n"
+            )
+            
+            # افزودن دکمه‌های اقدام سریع
+            markup_buttons.append([
+                InlineKeyboardButton(
+                    text=f"💸 اعلام واریز به {creditor['full_name']}",
+                    callback_data=f"pay:notify:{group_id}:{debtor['id']}:{creditor['id']}:{item['amount']}"
+                ),
+                InlineKeyboardButton(
+                    text=f"🔔 یادآوری به {debtor['full_name']}",
+                    callback_data=f"pay:remind:{group_id}:{debtor['id']}:{creditor['id']}:{item['amount']}"
+                )
+            ])
+            
+        lines.append("✅ <i>پس از انجام واریزی‌ها، دکمه «صفر کردن حساب‌ها» را بزنید تا دوره بسته شود.</i>")
         text = "\n".join(lines)
         
-    markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 مشاهده گزارش تفکیکی", callback_data=f"grp:report:{group_id}")],
-        [InlineKeyboardButton(text="🔄 صفر کردن حساب‌ها", callback_data=f"grp:zero_confirm:{group_id}")],
-        [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+    markup_buttons.append([
+        InlineKeyboardButton(text="📊 مشاهده گزارش تفکیکی", callback_data=f"grp:report:{group_id}")
+    ])
+    markup_buttons.append([
+        InlineKeyboardButton(text="🔄 صفر کردن حساب‌ها", callback_data=f"grp:zero_confirm:{group_id}"),
+        InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")
     ])
     
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=markup_buttons))
+
+
+@router.callback_query(F.data.startswith("pay:remind:"))
+async def handle_payment_reminder(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    debtor_id = int(parts[3])
+    creditor_id = int(parts[4])
+    amount = int(parts[5])
+    
+    group = await db.get_group_by_id(group_id)
+    members = await db.get_group_members(group_id)
+    group_tone = await db.get_group_tone(group_id)
+    
+    debtor = next((m for m in members if m["id"] == debtor_id), None)
+    creditor = next((m for m in members if m["id"] == creditor_id), None)
+    
+    if not debtor or not creditor:
+        await callback.answer("کاربر یافت نشد!", show_alert=True)
+        return
+        
+    card_num = creditor.get("card_number")
+    bank_name = creditor.get("bank_name")
+    if card_num:
+        card_info = f"شماره کارت: <code>{format_card_number(card_num)}</code> ({bank_name or 'بانک'})"
+    else:
+        card_info = "شماره کارت ثبت نشده (لطفاً از طریق ربات ثبت کنید)"
+        
+    reminder_text = render_reminder_msg(
+        tone=group_tone,
+        creditor_name=creditor["full_name"],
+        debtor_name=debtor["full_name"],
+        amount=amount,
+        card_info=card_info
+    )
+    
+    try:
+        await callback.bot.send_message(debtor_id, reminder_text, parse_mode="HTML")
+        await callback.answer(f"✅ پیام یادآوری با موفقیت برای {debtor['full_name']} ارسال شد!", show_alert=True)
+    except Exception as e:
+        await callback.answer("⚠️ امکان ارسال پیام به کاربر وجود ندارد (کاربر باید ربات را استارت کرده باشد).", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("pay:notify:"))
+async def handle_payment_notification(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    debtor_id = int(parts[3])
+    creditor_id = int(parts[4])
+    amount = int(parts[5])
+    
+    group = await db.get_group_by_id(group_id)
+    members = await db.get_group_members(group_id)
+    group_tone = await db.get_group_tone(group_id)
+    
+    debtor = next((m for m in members if m["id"] == debtor_id), None)
+    creditor = next((m for m in members if m["id"] == creditor_id), None)
+    
+    if not debtor or not creditor:
+        await callback.answer("کاربر یافت نشد!", show_alert=True)
+        return
+        
+    notice_text = render_payment_notice(
+        tone=group_tone,
+        debtor_name=debtor["full_name"],
+        creditor_name=creditor["full_name"],
+        amount=amount
+    )
+    
+    confirm_markup = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ تایید دریافت وجه", callback_data=f"pay:ack:{debtor_id}:{creditor_id}:{amount}"),
+            InlineKeyboardButton(text="❌ هنوز نیامده", callback_data=f"pay:nack:{debtor_id}:{creditor_id}")
+        ]
+    ])
+    
+    try:
+        await callback.bot.send_message(creditor_id, notice_text, parse_mode="HTML", reply_markup=confirm_markup)
+        await callback.answer(f"✅ پیام اعلام واریزی برای {creditor['full_name']} ارسال شد!", show_alert=True)
+    except Exception as e:
+        await callback.answer("⚠️ خطا در ارسال پیام به طلبکار (باید ربات را استارت کرده باشد).", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("pay:ack:"))
+async def handle_ack_payment(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    debtor_id = int(parts[2])
+    creditor_id = int(parts[3])
+    amount = int(parts[4])
+    
+    await callback.answer("✅ دریافت وجه تایید شد!")
+    await callback.message.edit_text(callback.message.text + "\n\n🟢 <b>وضعیت: توسط طلبکار تایید شد.</b>", parse_mode="HTML")
+    
+    try:
+        await callback.bot.send_message(
+            debtor_id,
+            f"🎉 <b>واریزی شما تایید شد!</b>\nطلبکار دریافت مبلغ <b>{format_amount(amount)}</b> را تایید کرد. دمت گرم!",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("pay:nack:"))
+async def handle_nack_payment(callback: CallbackQuery):
+    debtor_id = int(callback.data.split(":")[2])
+    await callback.answer("پیام عدم دریافت ثبت شد.")
+    await callback.message.edit_text(callback.message.text + "\n\n🔴 <b>وضعیت: طلبکار اعلام کرد پولی دریافت نشده است!</b>", parse_mode="HTML")
+    
+    try:
+        await callback.bot.send_message(
+            debtor_id,
+            "⚠️ <b>توجه:</b> طلبکار اعلام کرد که واریزی از طرف شما دریافت نکرده است. لطفاً فیش یا حسابتان را بررسی کنید.",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("grp:zero_confirm:"))

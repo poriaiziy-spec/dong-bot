@@ -9,6 +9,7 @@ from states import GroupCreationStates
 from helpers import format_amount
 
 from random_names import get_random_group_name
+from tones import TONE_NAMES
 
 router = Router()
 
@@ -137,13 +138,17 @@ async def handle_view_group(callback: CallbackQuery, state: FSMContext):
     active_expenses = await db.get_active_expenses(group_id)
     total_active_amount = sum(e["amount"] for e in active_expenses)
     
+    current_tone = await db.get_group_tone(group_id)
+    current_tone_name = TONE_NAMES.get(current_tone, "😊 دوستانه و محاوره")
+    
     members_lines = "\n".join([f"• {m['full_name']} ➡️ <b>{m.get('nickname', '')}</b>" for m in members])
     
     text = (
         f"📁 گروه: <b>{group['title']}</b>\n\n"
         f"👥 <b>اعضا و لقب‌های گروه ({len(members)} نفر):</b>\n{members_lines}\n\n"
         f"💰 کل هزینه‌های فعال این دوره: <b>{format_amount(total_active_amount)}</b>\n"
-        f"🧾 تعداد فاکتورهای تسویه نشده: <b>{len(active_expenses)}</b> مورد\n\n"
+        f"🧾 تعداد فاکتورهای تسویه نشده: <b>{len(active_expenses)}</b> مورد\n"
+        f"🎭 لحن ربات در این گروه: <b>{current_tone_name}</b>\n\n"
         "یکی از عملیات زیر را انتخاب کنید:"
     )
     
@@ -151,6 +156,49 @@ async def handle_view_group(callback: CallbackQuery, state: FSMContext):
         text,
         parse_mode="HTML",
         reply_markup=kb.group_dashboard_keyboard(group_id)
+    )
+
+
+@router.callback_query(F.data.startswith("grp:tone_menu:"))
+async def handle_tone_menu(callback: CallbackQuery):
+    await callback.answer()
+    group_id = int(callback.data.split(":")[2])
+    current_tone = await db.get_group_tone(group_id)
+    
+    text = (
+        "🎭 <b>انتخاب شیوه و لحن مکالمه ربات برای این گروه:</b>\n\n"
+        "می‌توانید تعیین کنید ربات در این گروه با چه سبکی پیام‌ها و یادآوری‌ها را ارسال کند:\n\n"
+        "• 👔 <b>رسمی و اداری:</b> مودبانه، کاملاً محترمانه و حسابداری شیک.\n"
+        "• 😊 <b>دوستانه و محاوره:</b> صمیمی، رفاقتی، عامیانه و راحت.\n"
+        "• 🔞 <b>بی‌ادب و خفن (+18):</b> شوخی‌های خاک‌برسری، تیکه‌انداز، فحش‌های رفاقتی و دنگ‌گیری زوری!\n\n"
+        "لحن مورد نظر خود را انتخاب کنید:"
+    )
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=kb.tone_selection_keyboard(group_id, current_tone)
+    )
+
+
+@router.callback_query(F.data.startswith("grp:set_tone:"))
+async def handle_set_tone(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    new_tone = parts[3]
+    
+    await db.set_group_tone(group_id, new_tone)
+    tone_title = TONE_NAMES.get(new_tone, new_tone)
+    await callback.answer(f"✅ لحن ربات به «{tone_title}» تغییر یافت!", show_alert=True)
+    
+    # بازگشت به منوی تغییر لحن با علامت تیک به‌روز
+    text = (
+        f"✅ لحن ربات با موفقیت روی <b>{tone_title}</b> تنظیم شد.\n\n"
+        "از این پس تمام پیام‌ها، گزارش‌ها و یادآوری‌ها با این لحن برای اعضا ارسال خواهد شد."
+    )
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=kb.tone_selection_keyboard(group_id, new_tone)
     )
 
 
@@ -176,3 +224,4 @@ async def handle_group_invite(callback: CallbackQuery, bot: Bot):
         [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
     ])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+

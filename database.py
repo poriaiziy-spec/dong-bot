@@ -45,10 +45,16 @@ async def init_db():
         """)
 
         # مایگریشن برای دیتابیس‌های موجود
-        try:
-            await db.execute("ALTER TABLE group_members ADD COLUMN nickname TEXT;")
-        except Exception:
-            pass
+        for col_sql in [
+            "ALTER TABLE group_members ADD COLUMN nickname TEXT;",
+            "ALTER TABLE users ADD COLUMN card_number TEXT;",
+            "ALTER TABLE users ADD COLUMN bank_name TEXT;",
+            "ALTER TABLE groups ADD COLUMN tone TEXT DEFAULT 'friendly';"
+        ]:
+            try:
+                await db.execute(col_sql)
+            except Exception:
+                pass
 
         # جدول هزینه‌ها
         await db.execute("""
@@ -178,11 +184,11 @@ async def get_user_groups(user_id: int) -> list[dict]:
 
 
 async def get_group_members(group_id: int) -> list[dict]:
-    """لیست اعضای یک گروه همراه با نام، یوزرنیم و لقب اختصاصی"""
+    """لیست اعضای یک گروه همراه با نام، یوزرنیم، شماره کارت و لقب اختصاصی"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
-            SELECT u.id, u.full_name, u.username, gm.nickname, gm.joined_at
+            SELECT u.id, u.full_name, u.username, u.card_number, u.bank_name, gm.nickname, gm.joined_at
             FROM group_members gm
             JOIN users u ON gm.user_id = u.id
             WHERE gm.group_id = ?
@@ -290,3 +296,44 @@ async def settle_group(group_id: int) -> int:
         """, (group_id,))
         await db.commit()
         return cursor.rowcount
+
+
+async def update_user_card(user_id: int, card_number: str | None, bank_name: str | None):
+    """ذخیره یا ویرایش شماره کارت و نام بانک کاربر"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE users
+            SET card_number = ?, bank_name = ?
+            WHERE id = ?
+        """, (card_number, bank_name, user_id))
+        await db.commit()
+
+
+async def get_user_card(user_id: int) -> dict:
+    """دریافت اطلاعات کارت بانکی کاربر"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT card_number, bank_name FROM users WHERE id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return dict(row)
+            return {"card_number": None, "bank_name": None}
+
+
+async def set_group_tone(group_id: int, tone: str):
+    """تنظیم لحن مکالمه گروه (formal, friendly, toxic)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE groups SET tone = ? WHERE id = ?", (tone, group_id))
+        await db.commit()
+
+
+async def get_group_tone(group_id: int) -> str:
+    """دریافت لحن مکالمه گروه (پیش‌فرض: friendly)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT tone FROM groups WHERE id = ?", (group_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row["tone"]:
+                return row["tone"]
+            return "friendly"
+
