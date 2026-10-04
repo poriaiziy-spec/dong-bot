@@ -31,11 +31,44 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+_STATUS_HTML = """<!DOCTYPE html>
+<html dir="rtl" lang="fa">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>کافه دنگ ☕ | وضعیت آنلاین</title>
+    <style>
+        body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 1rem; box-sizing: border-box; }
+        .card { background: #1e293b; padding: 2.5rem 2rem; border-radius: 1.25rem; box-shadow: 0 20px 35px rgba(0,0,0,0.4); text-align: center; border: 1px solid #334155; max-width: 460px; width: 100%; }
+        .badge { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981; padding: 0.4rem 1.2rem; border-radius: 9999px; font-weight: bold; margin-bottom: 1.2rem; font-size: 0.95rem; }
+        .dot { width: 10px; height: 10px; background: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981; }
+        h1 { margin: 0 0 0.75rem; font-size: 1.75rem; color: #f1f5f9; }
+        p { color: #94a3b8; font-size: 0.95rem; line-height: 1.7; margin: 0.6rem 0; }
+        .feature-box { background: #0f172a; border-radius: 0.75rem; padding: 1rem; margin: 1.5rem 0 0.5rem; text-align: right; border: 1px solid #334155; font-size: 0.9rem; }
+        .feature-item { margin: 0.4rem 0; color: #cbd5e1; }
+        .info { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #334155; font-size: 0.8rem; color: #64748b; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="badge"><span class="dot"></span> ۲۴/۷ آنلاین و فعال</div>
+        <h1>ربات کافه دنگ ☕</h1>
+        <p>سرور ابری فعال است و ربات تلگرام به صورت زنده و بلادرنگ در حال پردازش پیام‌ها و دنگ‌ها می‌باشد.</p>
+        <div class="feature-box">
+            <div class="feature-item">🔒 رمزنگاری نظامی AES-256 داده‌ها</div>
+            <div class="feature-item">💓 مکانیزم زنده نگه‌داشتن مداوم (Keep-Alive)</div>
+            <div class="feature-item">☁️ پشتیبان‌گیری خودکار در دیتابیس ابری</div>
+        </div>
+        <div class="info">Render Cloud Web Service • Anti-Sleep Guard Active</div>
+    </div>
+</body>
+</html>"""
+
 async def start_health_check_server():
     """راه‌اندازی سرور وب سبک برای سازگاری با هاست‌های ابری رایگان مانند Render و HuggingFace"""
     port = int(os.getenv("PORT", "8080"))
     app = web.Application()
-    app.router.add_get("/", lambda req: web.Response(text="Dong Telegram Bot is active and running 24/7!"))
+    app.router.add_get("/", lambda req: web.Response(text=_STATUS_HTML, content_type="text/html", charset="utf-8"))
     app.router.add_get("/health", lambda req: web.Response(text="OK"))
     runner = web.AppRunner(app)
     await runner.setup()
@@ -43,6 +76,27 @@ async def start_health_check_server():
     await site.start()
     logger.info(f"🌐 سرور پایش وضعیت (Health Check) روی پورت {port} فعال شد.")
     return runner
+
+async def start_keep_alive_task():
+    """ارسال منظم پینگ دوره‌ای هر ۴ دقیقه به آدرس عمومی جهت جلوگیری از خوابیدن سرور رندر"""
+    service_url = os.getenv("RENDER_EXTERNAL_URL") or "https://dong-bot-1.onrender.com"
+    health_url = f"{service_url.rstrip('/')}/health"
+    
+    # تاخیر اولیه ۲۰ ثانیه‌ای برای اطمینان از استارت کامل سرور وب
+    await asyncio.sleep(20)
+    logger.info(f"🔄 تسک زنده نگه‌داشتن خودکار ۲۴ ساعته فعال شد (هدف: {health_url})")
+    
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(health_url, timeout=aiohttp.ClientTimeout(total=25)) as resp:
+                    if resp.status == 200:
+                        logger.debug("💓 پینگ زنده نگه‌داشتن سرور با موفقیت انجام شد.")
+        except Exception as e:
+            logger.debug(f"Keep-alive ping notice: {e}")
+        
+        # هر ۴ دقیقه (۲۴۰ ثانیه) پینگ ارسال می‌شود تا از سقف ۱۵ دقیقه رندر خیلی فاصله داشته باشیم
+        await asyncio.sleep(240)
 
 async def set_bot_commands(bot: Bot):
     """تنظیم منوی دستورات ربات در تلگرام"""
@@ -118,10 +172,12 @@ async def main():
     scheduler_task = asyncio.create_task(start_daily_quote_scheduler(bot))
     # راه‌اندازی تسک بکاپ‌گیری دوره‌ای هر ۵ دقیقه در پس‌زمینه
     periodic_sync_task = asyncio.create_task(start_periodic_cloud_backup(300))
+    # راه‌اندازی تسک زنده نگه‌داشتن سرور رندر هر ۴ دقیقه (Keep-Alive ضد خوابیدن سرور)
+    keep_alive_task = asyncio.create_task(start_keep_alive_task())
 
     try:
-        # حذف پیام‌های صف قبل از استارت
-        await bot.delete_webhook(drop_pending_updates=True)
+        # عدم حذف پیام‌های دریافتی تا پیام‌های ارسالی کاربر هنگام خواب موقت پردازش شوند
+        await bot.delete_webhook(drop_pending_updates=False)
         await dp.start_polling(bot)
     finally:
         logger.info("💾 در حال ذخیره نسخه پشتیبان نهایی دیتابیس در فضای ابری قبل از خاموش شدن...")
@@ -129,6 +185,7 @@ async def main():
             await backup_to_cloud()
         except Exception as e:
             logger.error(f"خطا در بکاپ نهایی: {e}")
+        keep_alive_task.cancel()
         periodic_sync_task.cancel()
         scheduler_task.cancel()
         await web_runner.cleanup()
