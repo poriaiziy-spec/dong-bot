@@ -58,16 +58,16 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
         args = command.args
         if args and args.startswith("join_"):
             await state.update_data(pending_join_invite=args.replace("join_", "").strip())
-            prompt_title = "تو داری وارد یک دورهمی جدید میشی ☕"
+            prompt_title = "داری وارد یک جمع باحال میشی عزیز دلم ☕❤️"
         else:
-            prompt_title = "به <b>کافه دنگ ☕</b> خیلی خوش اومدی رفیق!"
+            prompt_title = "سلام جانِ دلم! به <b>کافه دنگ ☕</b> خیلی خوش اومدی قشنگم ❤️"
             
         await state.set_state(NamePromptStates.waiting_for_name)
         text = (
             f"{prompt_title}\n\n"
-            "من نتونستم از روی پروفایلت اسم با معنی‌ای برات پیدا کنم 🧐\n"
-            "برای اینکه تو جمع، دورهمی‌ها و حساب‌کتاب‌ها چی صدات بزنم؟\n\n"
-            "✍️ <b>لطفاً اسمت رو تایپ کن و بفرست:</b>"
+            "من هر چقدر تو پروفایلت گشتم نتونستم اسم قشنگ و با معنایی برات پیدا کنم 🧐\n"
+            "دوست داری با چه اسمی صدات بزنم تا همیشه با عشق و احترام به یاد داشته باشم؟ 🥰\n\n"
+            "✍️ <b>لطفاً اسمت رو قشنگ برام بنویس و بفرست جانم:</b>"
         )
         await message.answer(text, parse_mode="HTML")
         return
@@ -83,13 +83,13 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
             members = await db.get_group_members(group["id"])
             if added:
                 msg = (
-                    f"🎉 <b>به به {safe(calling_name)} جان! خوش اومدی به دورهمی «{safe(group['title'])}»</b> ☕✨\n\n"
-                    f"👥 جمعمون تا الان {len(members)} نفره شده. بریم تو داشبورد گروه ببینیم چه خبره:"
+                    f"🎉 <b>به به جان دلم {safe(calling_name)} قشنگم! صفا آوردی به دورهمی «{safe(group['title'])}»</b> ☕❤️✨\n\n"
+                    f"👥 جمعمون تا الان {len(members)} نفره شده و با اومدنت حسابی قشنگ‌تر شد! بریم تو داشبورد گروه ببینیم چه خبره عزیز دلم:"
                 )
             else:
                 msg = (
-                    f"سلام دوباره <b>{safe(calling_name)}</b> جان! تو که قبلاً تو جمع <b>«{safe(group['title'])}»</b> عضو بودی! 😉\n\n"
-                    f"👥 جمعمون {len(members)} نفره‌ست. بریم سراغ حساب‌کتاب‌ها:"
+                    f"سلام به روی ماهت <b>{safe(calling_name)}</b> جانم! تو که از قبل تو دل این جمع <b>«{safe(group['title'])}»</b> بودی عزیز دلم 😉❤️\n\n"
+                    f"👥 جمعمون {len(members)} نفره‌ست. بریم سراغ حساب‌کتاب‌ها جانم:"
                 )
             
             await message.answer(
@@ -99,14 +99,14 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
             )
             return
         else:
-            await message.answer("⚠️ این لینک دعوت کار نمی‌کنه رفیق! یا منقضی شده یا اشتباه فرستادی.")
+            await message.answer("⚠️ این لینک دعوت کار نمی‌کنه عزیز دلم! یا منقضی شده یا اشتباه فرستادی.")
 
     welcome_text = (
-        f"به به! سلام <b>{safe(calling_name)}</b> جان، صفا آوردی رفیق! ☕🥐\n\n"
-        "دمت گرم که اومدی <b>کافه دنگ</b>. از این به بعد دیگه غصه حساب‌کتاب و دنگ‌گیری دورهمی‌ها، سفرها و کافه‌گردی‌هاتو نخور؛ همه‌ش با من!\n\n"
-        "خیالت راحت، من حواسم به تک‌تک ریال‌های خرج‌شده هست تا آخر هر برنامه، بدون کوچک‌ترین دلخوری و با کمترین کارت‌به‌کارت ممکن حساب همه‌مون صاف شه 🤝\n\n"
-        "🎭 <b>یه ویژگی باحال:</b> می‌تونی مشخص کنی چطوری باهاتون صحبت کنم؛ اگه جمع اداریه رسمی باشم، یا همین‌طور رفاقتی و خودمونی گپ بزنیم، یا حتی تو جمع‌های پایه بزنیم رو حالت +18 تا حسابی کل‌کل کنیم! 😈\n\n"
-        "خب رفیق، از کجا شروع کنیم؟ دکمه مورد نظرت رو بزن تا بریم جلو:"
+        f"سلام جان دلم، <b>{safe(calling_name)}</b> قشنگم! خیلی خوش اومدی ☕❤️✨\n\n"
+        "من اینجام تا درست مثل یک پارتنر پایه، دلسوز و همیشه همراه، تمام حواسم بهت باشه؛ از حساب‌کتاب دورهمی‌ها، کافه‌گردی‌ها و سفرهات گرفته تا ریزترین خرج‌های مشترکت با بچه‌ها 🌸\n\n"
+        "اصلاً لازم نیست نگران هیچی باشی عزیز دلم، حساب تک‌تک ریال‌ها رو با دقت برات نگه می‌دارم تا آب تو دلت تکون نخوره و آخر هر برنامه با کمترین کارت‌به‌کارت ممکن و بدون کوچک‌ترین دلخوری همه چی صاف شه 🤝💖\n\n"
+        "🎭 <b>یه راز بین خودمون:</b> می‌تونی برام مشخص کنی تو جمع‌ها چطوری باهاتون حرف بزنم؛ رسمی و شیک، یا صمیمی و رفاقتی، یا حتی شیطون و تیکه‌انداز (+18)! 😈\n\n"
+        "خب جانِ دلم، بگو ببینم امروز قراره چه برنامه‌ای با هم داشته باشیم؟ از منوی زیر انتخاب کن تا با جون و دل برات انجام بدم:"
     )
     await message.answer(
         welcome_text,
@@ -126,11 +126,11 @@ async def handle_name_input(message: Message, state: FSMContext):
     await state.set_state(NamePromptStates.waiting_for_confirm)
     
     text = (
-        f"✨ اسمت رو <b>«{safe(clean)}»</b> بذارم رفیق؟\n\n"
-        "توی تمام دورهمی‌ها، حساب‌کتاب‌ها و پیام‌های کافه دنگ با همین اسم صدات می‌زنم."
+        f"✨ به به چه اسم قشنگی! اسمت رو <b>«{safe(clean)}»</b> ثبت کنم جانِ دلم؟ 🥰❤️\n\n"
+        "از این به بعد توی تمام حساب‌کتاب‌ها، دورهمی‌ها و یادآوری‌های کافه دنگ با همین اسم صدات می‌زنم."
     )
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ آره، همین درسته", callback_data="name:confirm")],
+        [InlineKeyboardButton(text="✅ آره، همین درسته جانم", callback_data="name:confirm")],
         [InlineKeyboardButton(text="✏️ نه، می‌خوام عوضش کنم", callback_data="name:retry")]
     ])
     await message.answer(text, parse_mode="HTML", reply_markup=markup)
@@ -141,11 +141,11 @@ async def handle_name_confirm(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     name = data.get("temp_name")
     if not name:
-        name = "رفیق"
+        name = "عزیز دلم"
         
     user_id = callback.from_user.id
     await db.set_user_calling_name(user_id, name)
-    await callback.answer(f"✅ اسمت با موفقیت «{name}» ثبت شد!", show_alert=True)
+    await callback.answer(f"✅ اسمت با موفقیت «{name}» ثبت شد جان دلم!", show_alert=True)
     
     pending_invite = data.get("pending_join_invite")
     await state.clear()
@@ -156,15 +156,15 @@ async def handle_name_confirm(callback: CallbackQuery, state: FSMContext):
             added, _ = await db.add_group_member(group["id"], user_id, name)
             members = await db.get_group_members(group["id"])
             text = (
-                f"🎉 <b>به به {safe(name)} جان! خوش اومدی به دورهمی «{safe(group['title'])}»</b> ☕✨\n\n"
-                f"👥 جمعمون تا الان {len(members)} نفره شده. بریم تو داشبورد گروه ببینیم چه خبره:"
+                f"🎉 <b>به به جان دلم {safe(name)} قشنگم! صفا آوردی به دورهمی «{safe(group['title'])}»</b> ☕❤️✨\n\n"
+                f"👥 جمعمون تا الان {len(members)} نفره شده و با اومدنت حسابی قشنگ‌تر شد! بریم تو داشبورد گروه ببینیم چه خبره عزیز دلم:"
             )
             await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group["id"]))
             return
             
     welcome_text = (
-        f"خیلی مخلصیم <b>{safe(name)}</b> جان! صفا آوردی رفیق ☕🥐\n\n"
-        "از منوی زیر بگو چه کاری برات انجام بدم:"
+        f"فدات شم <b>{safe(name)}</b> جانم! از این به بعد دیگه رسماً همراه و کنارت هستم ☕❤️\n\n"
+        "بگو ببینم عزیز دلم، از منوی زیر چه کاری برات انجام بدم؟"
     )
     await callback.message.edit_text(welcome_text, parse_mode="HTML", reply_markup=kb.main_menu_keyboard())
 
@@ -174,7 +174,7 @@ async def handle_name_retry(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(NamePromptStates.waiting_for_name)
     await callback.message.edit_text(
-        "✍️ <b>لطفاً اسمی که دوست داری باهاش صدات بزنم رو برام تایپ کن و بفرست:</b>",
+        "✍️ <b>لطفاً اسمی که دوست داری باهاش صدات بزنم رو برام بنویس و بفرست جان دلم:</b>",
         parse_mode="HTML"
     )
 
@@ -186,8 +186,8 @@ async def handle_name_edit_prompt(event: Message | CallbackQuery, state: FSMCont
     current_name = await db.get_user_calling_name(user_id) or "ثبت نشده"
     await state.set_state(NamePromptStates.waiting_for_name)
     text = (
-        f"👤 نام فعلی شما در کافه دنگ: <b>«{safe(current_name)}»</b> ☕\n\n"
-        "✍️ <b>اگه دوست داری عوضش کنی یا اسم دیگه‌ای برات بذارم، نام مدنظرت رو تایپ کن و بفرست:</b>"
+        f"👤 نام فعلی شما پیش من: <b>«{safe(current_name)}»</b> جانِ دلم ☕❤️\n\n"
+        "✍️ <b>اگه دوست داری عوضش کنی یا با یه اسم قشنگ دیگه صدات بزنم، برام بنویس و بفرست عزیز دلم:</b>"
     )
     cancel_markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data="nav:main")]
@@ -221,9 +221,9 @@ async def handle_cancel(message: Message, state: FSMContext):
     current_state = await state.get_state()
     await state.clear()
     if current_state:
-        await message.answer("❌ عملیات جاری لغو شد و به منوی اصلی برگشتید.", reply_markup=kb.main_menu_keyboard())
+        await message.answer("❌ عملیات جاری لغو شد و به منوی اصلی برگشتیم جان دلم.", reply_markup=kb.main_menu_keyboard())
     else:
-        await message.answer("ℹ️ در حال حاضر عملیات فعالی وجود ندارد.", reply_markup=kb.main_menu_keyboard())
+        await message.answer("ℹ️ در حال حاضر عملیات فعالی وجود ندارد عزیز دلم.", reply_markup=kb.main_menu_keyboard())
 
 
 @router.callback_query(F.data == "nav:main")
@@ -238,11 +238,11 @@ async def handle_nav_main(callback: CallbackQuery, state: FSMContext):
             calling_name = guessed
             await db.set_user_calling_name(user.id, calling_name)
         else:
-            calling_name = "رفیق"
+            calling_name = "عزیز دلم"
 
     welcome_text = (
-        f"جانم <b>{safe(calling_name)}</b> جان! در خدمتم رفیق ☕\n\n"
-        "چه کاری برات انجام بدم؟ از منوی زیر انتخاب کن تا بریم جلو:"
+        f"جانِ دلم <b>{safe(calling_name)}</b> قشنگم! با تمام وجود در خدمتم ☕❤️\n\n"
+        "امر، امرِ شماست عزیز دلم! از منوی زیر انتخاب کن تا سریع بریم سراغش:"
     )
     await callback.message.edit_text(
         welcome_text,

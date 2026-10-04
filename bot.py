@@ -106,8 +106,8 @@ async def main():
     try:
         await set_bot_commands(bot)
         await bot.set_my_name(name="کافه دنگ ☕")
-        await bot.set_my_description(description="☕ به کافه دنگ خوش آمدید!\nمدیریت هوشمند دنگ‌ها، تسهیم دقیق هزینه‌ها، یادآوری واریز و دورهمی رفقا.")
-        await bot.set_my_short_description(short_description="کافه دنگ ☕ | مدیریت هوشمند دنگ و هزینه‌های مشترک")
+        await bot.set_my_description(description="☕ به کافه دنگ خوش اومدی قشنگم!\nمن همراه و پارتنر صمیمی شما برای حساب‌کتاب دنگ‌ها، تسهیم دقیق هزینه‌ها، یادآوری و دورهمی‌های دلنشین هستم ❤️")
+        await bot.set_my_short_description(short_description="کافه دنگ ☕❤️ | پارتنر صمیمی شما در مدیریت دنگ و دورهمی‌ها")
     except Exception as e:
         logger.warning(f"عدم امکان تنظیم دستورات یا نام ربات در منو: {e}")
 

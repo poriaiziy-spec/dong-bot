@@ -23,8 +23,8 @@ async def handle_my_card(callback: CallbackQuery, state: FSMContext):
     
     if cards:
         lines = [
-            f"💳 <b>کارت‌های بانکی ثبت‌شده شما ({len(cards)} کارت):</b>\n",
-            "⭐ <i>کارت اصلی شما در زمان تسویه حساب به بدهکاران نمایش داده می‌شود.</i>\n"
+            f"💳 <b>کارت‌های بانکی ثبت‌شده شما ({len(cards)} کارت) جانِ دلم:</b> ☕❤️\n",
+            "⭐ <i>کارت اصلیت رو ستاره‌دار کردم تا موقع تسویه اول از همه بره جلو چشم بچه‌ها!</i>\n"
         ]
         for idx, c in enumerate(cards, 1):
             is_def = "⭐ <b>[کارت اصلی]</b>" if c["is_default"] else ""
@@ -32,14 +32,14 @@ async def handle_my_card(callback: CallbackQuery, state: FSMContext):
             bank = safe(c.get("bank_name") or "بانک")
             lines.append(f"{idx}️⃣ <b>{bank}</b> {is_def}\n   🔢 <code>{formatted}</code>\n")
             
-        lines.append("👇 برای مشاهده، تغییر کارت اصلی یا حذف، روی هر کارت کلیک کنید:")
+        lines.append("👇 برای دیدن جزئیات، عوض کردن کارت اصلی یا حذف، روی هر کارت بزن عزیز دلم:")
         markup = kb.cards_list_keyboard(cards)
         text = "\n".join(lines)
     else:
         text = (
-            "💳 <b>هنوز هیچ شماره کارتی ثبت نکرده‌اید!</b>\n\n"
-            "با ثبت شماره کارت، وقتی بابت خریدهایتان از کسی طلبکار شوید، شماره کارت شما به بدهکاران نمایش داده می‌شود تا بدون معطلی واریز کنند.\n\n"
-            "✨ <b>امکان جدید:</b> می‌توانید هر تعداد شماره کارت (بلو، ملی، ملت و...) که مایلید ثبت کنید و کارت اصلی را به دلخواه انتخاب کنید!"
+            "💳 <b>هنوز هیچ شماره کارتی ثبت نکردی جان دلم!</b> ☕❤️\n\n"
+            "با ثبت شماره کارتت، هر وقت بابت خریدهات از بچه‌ها طلبکار شدی، شماره کارتت رو مستقیم جلو چشمشون می‌ذارم تا سریع و بی‌دردسر برات واریز کنن و حقت ضایع نشه عزیز دلم ✨\n\n"
+            "✨ <b>امکان باحال:</b> می‌تونی هر چند تا کارتی که داری (بلو، ملی، ملت و...) رو برام بفرستی تا با عشق ثبتشون کنم و کارت اصلیت رو انتخاب کنی!"
         )
         markup = kb.card_menu_keyboard(has_card=False)
         
@@ -52,8 +52,8 @@ async def handle_add_card_prompt(callback: CallbackQuery, state: FSMContext):
     await state.set_state(CardRegistrationStates.waiting_for_card_number)
     
     text = (
-        "💳 <b>لطفاً شماره کارت ۱۶ رقمی خود را وارد کنید:</b>\n"
-        "(می‌توانید به صورت پیوسته یا با خط فاصله بفرستید، مانند: <code>6037991122334455</code>)"
+        "💳 <b>شماره کارت ۱۶ رقمی قشنگت رو برام بفرست جانِ دلم:</b> ☕❤️\n"
+        "(می‌تونی پشت سر هم یا با خط فاصله بفرستی، مثل: <code>6037991122334455</code>)"
     )
     cancel_markup = kb.InlineKeyboardMarkup(inline_keyboard=[
         [kb.InlineKeyboardButton(text="❌ انصراف", callback_data="nav:my_card")]
