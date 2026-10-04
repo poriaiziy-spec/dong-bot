@@ -167,6 +167,18 @@ async def add_group_member(group_id: int, user_id: int) -> tuple[bool, str]:
         return True, nickname
 
 
+async def remove_group_member(group_id: int, user_id: int) -> bool:
+    """حذف یک عضو از گروه توسط سرگروه"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("""
+            DELETE FROM group_members
+            WHERE group_id = ? AND user_id = ?
+        """, (group_id, user_id))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+
 async def get_user_groups(user_id: int) -> list[dict]:
     """لیست گروه‌هایی که کاربر در آن‌ها عضو است"""
     async with aiosqlite.connect(DB_PATH) as db:

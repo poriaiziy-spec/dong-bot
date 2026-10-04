@@ -152,11 +152,112 @@ async def handle_view_group(callback: CallbackQuery, state: FSMContext):
         "یکی از عملیات زیر را انتخاب کنید:"
     )
     
+    is_creator = (group["created_by"] == callback.from_user.id)
+    
     await callback.message.edit_text(
         text,
         parse_mode="HTML",
-        reply_markup=kb.group_dashboard_keyboard(group_id)
+        reply_markup=kb.group_dashboard_keyboard(group_id, is_creator=is_creator)
     )
+
+
+@router.callback_query(F.data.startswith("grp:members_manage:"))
+async def handle_members_manage(callback: CallbackQuery):
+    group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
+    
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+        
+    if group["created_by"] != callback.from_user.id:
+        await callback.answer("⚠️ فقط سرگروه مجاز به مدیریت و اخراج اعضا است!", show_alert=True)
+        return
+        
+    await callback.answer()
+    members = await db.get_group_members(group_id)
+    
+    # آیا عضوی غیر از سرگروه وجود دارد؟
+    other_members = [m for m in members if m["id"] != group["created_by"]]
+    if not other_members:
+        text = "👑 شما تنها عضو این گروه هستید و عضو دیگری برای اخراج وجود ندارد."
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+        ])
+    else:
+        text = (
+            f"👑 <b>مدیریت اعضای گروه «{group['title']}»:</b>\n\n"
+            "روی هر عضوی که می‌خواهید از گروه حذف شود کلیک کنید:"
+        )
+        markup = kb.members_kick_keyboard(group_id, members, group["created_by"])
+        
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("grp:kick_confirm:"))
+async def handle_kick_confirm(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    member_id = int(parts[3])
+    
+    group = await db.get_group_by_id(group_id)
+    if group["created_by"] != callback.from_user.id:
+        await callback.answer("⚠️ فقط سرگروه مجاز است!", show_alert=True)
+        return
+        
+    await callback.answer()
+    members = await db.get_group_members(group_id)
+    target = next((m for m in members if m["id"] == member_id), None)
+    target_name = target.get("display_name", target["full_name"]) if target else "این کاربر"
+    
+    text = (
+        f"⚠️ <b>تأییدیه اخراج عضو:</b>\n\n"
+        f"آیا مطمئن هستید که می‌خواهید <b>{target_name}</b> را از گروه اخراج کنید؟"
+    )
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.kick_confirm_keyboard(group_id, member_id))
+
+
+@router.callback_query(F.data.startswith("grp:kick_do:"))
+async def handle_kick_do(callback: CallbackQuery, bot: Bot):
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    member_id = int(parts[3])
+    
+    group = await db.get_group_by_id(group_id)
+    if group["created_by"] != callback.from_user.id:
+        await callback.answer("⚠️ فقط سرگروه مجاز است!", show_alert=True)
+        return
+        
+    members = await db.get_group_members(group_id)
+    target = next((m for m in members if m["id"] == member_id), None)
+    
+    await db.remove_group_member(group_id, member_id)
+    await callback.answer("✅ عضو با موفقیت از گروه اخراج شد.", show_alert=True)
+    
+    # ارسال پیام اطلاع‌رسانی به کاربر اخراج‌شده در صورت امکان
+    try:
+        await bot.send_message(
+            member_id,
+            f"ℹ️ شما توسط سرگروه از گروه <b>«{group['title']}»</b> حذف شدید.",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
+        
+    # بازگشت به لیست مدیریت اعضا
+    members_updated = await db.get_group_members(group_id)
+    other_members = [m for m in members_updated if m["id"] != group["created_by"]]
+    if not other_members:
+        text = "👑 عضو دیگری برای اخراج در گروه وجود ندارد."
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+        ])
+    else:
+        text = f"👑 <b>مدیریت اعضای گروه «{group['title']}»:</b>"
+        markup = kb.members_kick_keyboard(group_id, members_updated, group["created_by"])
+        
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+
 
 
 @router.callback_query(F.data.startswith("grp:tone_menu:"))

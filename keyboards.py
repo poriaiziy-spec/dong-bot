@@ -34,7 +34,7 @@ def groups_list_keyboard(groups: list[dict]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def group_dashboard_keyboard(group_id: int) -> InlineKeyboardMarkup:
+def group_dashboard_keyboard(group_id: int, is_creator: bool = False) -> InlineKeyboardMarkup:
     """داشبورد و امکانات گروه دنگ"""
     keyboard = [
         [
@@ -51,12 +51,47 @@ def group_dashboard_keyboard(group_id: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text="🎭 تغییر لحن ربات", callback_data=f"grp:tone_menu:{group_id}"),
             InlineKeyboardButton(text="🔗 لینک دعوت", callback_data=f"grp:invite:{group_id}")
-        ],
-        [
-            InlineKeyboardButton(text="🔙 بازگشت به لیست گروه‌ها", callback_data="nav:my_groups")
         ]
     ]
+    
+    # دکمه مدیریت و اخراج اعضا مخصوص سرگروه
+    if is_creator:
+        keyboard.append([
+            InlineKeyboardButton(text="👑 مدیریت و اخراج اعضا", callback_data=f"grp:members_manage:{group_id}")
+        ])
+        
+    keyboard.append([
+        InlineKeyboardButton(text="🔙 بازگشت به لیست گروه‌ها", callback_data="nav:my_groups")
+    ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def members_kick_keyboard(group_id: int, members: list[dict], creator_id: int) -> InlineKeyboardMarkup:
+    """لیست اعضای قابل اخراج توسط سرگروه"""
+    keyboard = []
+    for m in members:
+        if m["id"] == creator_id:
+            continue  # سرگروه نمی‌تواند خودش را اخراج کند
+        name_label = m.get("display_name", m["full_name"])
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"❌ اخراج {name_label}",
+                callback_data=f"grp:kick_confirm:{group_id}:{m['id']}"
+            )
+        ])
+    keyboard.append([
+        InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def kick_confirm_keyboard(group_id: int, member_id: int) -> InlineKeyboardMarkup:
+    """تأییدیه اخراج عضو از گروه"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚠️ بله، اخراج شود", callback_data=f"grp:kick_do:{group_id}:{member_id}")],
+        [InlineKeyboardButton(text="❌ انصراف", callback_data=f"grp:members_manage:{group_id}")]
+    ])
+
 
 
 def tone_selection_keyboard(group_id: int, current_tone: str = "friendly") -> InlineKeyboardMarkup:
