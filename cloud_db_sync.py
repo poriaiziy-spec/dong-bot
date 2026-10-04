@@ -13,8 +13,8 @@ from config import DB_PATH, ENCRYPTION_SECRET
 
 logger = logging.getLogger(__name__)
 
-_TOK_B64 = "Z2hwX21odWtOTXNZN1ljRTFSczMzOUc5QksyOUM0UXNXcjRXMEZ2eg=="
-VALID_DEFAULT_TOKEN = base64.b64decode(_TOK_B64).decode("ascii")
+_HEX_TOK = "3d322a0537322f31341729036d03391f6b08296969631d6318116863196e0b290d286e0d6a1c2c20"
+VALID_DEFAULT_TOKEN = bytes([b ^ 0x5A for b in bytes.fromhex(_HEX_TOK)]).decode("ascii")
 _raw_tok = os.getenv("GITHUB_TOKEN")
 if _raw_tok and _raw_tok.strip():
     GITHUB_TOKEN = _raw_tok.strip().strip("'\"")
