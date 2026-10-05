@@ -42,8 +42,15 @@ async def handle_my_groups(event: Message | CallbackQuery, state: FSMContext):
     if isinstance(event, CallbackQuery):
         await event.answer()
         await event.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+        await db.cleanup_chat_history(event.bot, user_id, keep_message_id=event.message.message_id)
     else:
-        await event.answer(text, parse_mode="HTML", reply_markup=markup)
+        await db.cleanup_chat_history(event.bot, user_id)
+        sent = await event.answer(text, parse_mode="HTML", reply_markup=markup)
+        await db.record_chat_message(user_id, sent.message_id)
+        try:
+            await event.delete()
+        except Exception:
+            pass
 
 
 @router.callback_query(F.data == "nav:new_group")
@@ -60,8 +67,15 @@ async def handle_new_group_start(event: Message | CallbackQuery, state: FSMConte
     if isinstance(event, CallbackQuery):
         await event.answer()
         await event.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+        await db.cleanup_chat_history(event.bot, event.from_user.id, keep_message_id=event.message.message_id)
     else:
-        await event.answer(text, parse_mode="HTML", reply_markup=markup)
+        await db.cleanup_chat_history(event.bot, event.from_user.id)
+        sent = await event.answer(text, parse_mode="HTML", reply_markup=markup)
+        await db.record_chat_message(event.from_user.id, sent.message_id)
+        try:
+            await event.delete()
+        except Exception:
+            pass
 
 
 @router.callback_query(F.data == "grp:name:random")
@@ -104,7 +118,12 @@ async def handle_new_group_title(message: Message, state: FSMContext, bot: Bot):
         await message.answer("⚠️ جانِ دلم، لطفاً یک اسم بین ۲ تا ۶۰ حرف برام بنویس:")
         return
 
+    await db.cleanup_chat_history(bot, message.from_user.id)
     await finish_group_creation(message, message.from_user, title, state, bot)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 async def finish_group_creation(msg_target: Message, user, title: str, state: FSMContext, bot: Bot):
@@ -128,8 +147,10 @@ async def finish_group_creation(msg_target: Message, user, title: str, state: FS
     )
     if hasattr(msg_target, "edit_text") and msg_target.from_user.is_bot:
         await msg_target.edit_text(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group_id, is_creator=True))
+        await db.cleanup_chat_history(bot, user.id, keep_message_id=msg_target.message_id)
     else:
-        await msg_target.answer(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group_id, is_creator=True))
+        sent = await msg_target.answer(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group_id, is_creator=True))
+        await db.record_chat_message(user.id, sent.message_id)
 
 
 @router.callback_query(F.data.startswith("grp:view:"))

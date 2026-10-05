@@ -125,6 +125,17 @@ async def init_db():
         except Exception:
             pass
 
+        # جدول نگهداری شناسه‌های پیام‌های چت جهت پاکسازی مکالمات قبلی
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id);")
+
         await db.commit()
     
     # بازیابی خودکار داده‌ها در سرورهای ابری
@@ -706,8 +717,64 @@ async def reset_all_database():
         await db.execute("DELETE FROM groups;")
         await db.execute("DELETE FROM user_cards;")
         await db.execute("DELETE FROM users;")
+        await db.execute("DELETE FROM chat_messages;")
         await db.execute("PRAGMA foreign_keys = ON;")
         await db.commit()
         await backup_to_cloud(is_reset=True)
+
+
+async def record_chat_message(user_id: int, message_id: int):
+    """ثبت شناسه پیام در چت جهت پاکسازی خودکار در مکالمات بعدی"""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("INSERT INTO chat_messages (user_id, message_id) VALUES (?, ?)", (user_id, message_id))
+            # نگهداری حداکثر ۳۰ پیام اخیر هر کاربر جهت بهینه‌سازی
+            await db.execute("""
+                DELETE FROM chat_messages 
+                WHERE user_id = ? AND id NOT IN (
+                    SELECT id FROM chat_messages WHERE user_id = ? ORDER BY id DESC LIMIT 30
+                )
+            """, (user_id, user_id))
+            await db.commit()
+    except Exception:
+        pass
+
+
+async def get_and_clear_chat_messages(user_id: int) -> list[int]:
+    """دریافت و پاکسازی تمام شناسه‌های پیام‌های ثبت‌شده کاربر"""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT message_id FROM chat_messages WHERE user_id = ?", (user_id,)) as cursor:
+                rows = await cursor.fetchall()
+                msg_ids = [r[0] for r in rows]
+            await db.execute("DELETE FROM chat_messages WHERE user_id = ?", (user_id,))
+            await db.commit()
+            return msg_ids
+    except Exception:
+        return []
+
+
+async def cleanup_chat_history(bot, user_id: int, current_message_id: int | None = None, keep_message_id: int | None = None):
+    """
+    پاکسازی پیام‌های قبلی چت برای جلوگیری از شلوغی و شروع مکالمه جدید در یک صفحه تمیز
+    """
+    # حذف پیام فعلی کاربر اگر درخواست شده باشد
+    if current_message_id and current_message_id != keep_message_id:
+        try:
+            await bot.delete_message(chat_id=user_id, message_id=current_message_id)
+        except Exception:
+            pass
+
+    # حذف پیام‌های قبلی ثبت‌شده ربات در دیتابیس
+    prev_ids = await get_and_clear_chat_messages(user_id)
+    for mid in prev_ids:
+        if mid != current_message_id and mid != keep_message_id:
+            try:
+                await bot.delete_message(chat_id=user_id, message_id=mid)
+            except Exception:
+                pass
+
+    if keep_message_id:
+        await record_chat_message(user_id, keep_message_id)
 
 

@@ -3,6 +3,7 @@ import random
 import logging
 from datetime import datetime, timezone, timedelta
 from aiogram import Bot
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import database as db
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,12 @@ async def get_daily_quote_unique() -> tuple[int, str]:
     chosen_idx = random.choice(available_indices)
     return chosen_idx, CAFE_MOTIVATIONAL_QUOTES[chosen_idx]
 
+def quote_dismiss_keyboard() -> InlineKeyboardMarkup:
+    """دکمه تایید خواندن و حذف پیام صبحگاهی جهت جلوگیری از شلوغی چت"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="☕ مرسی، خوندم و حال کردم ✨ (حذف پیام)", callback_data="quote:dismiss")]
+    ])
+
 def format_cafe_quote_message(quote: str) -> str:
     return (
         "☕ <b>یادداشت صبحگاهی کافه دنگ</b> 🥐\n"
@@ -89,7 +96,7 @@ def format_cafe_quote_message(quote: str) -> str:
     )
 
 async def broadcast_daily_quote(bot: Bot) -> int:
-    """ارسال پیام صبحگاهی کافه‌ای به تمام کاربران فعال ربات بدون تکرار"""
+    """ارسال پیام صبحگاهی کافه‌ای به تمام کاربران فعال ربات بدون تکرار با دکمه حذف"""
     from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest, TelegramRetryAfter
 
     user_ids = await db.get_all_user_ids()
@@ -98,6 +105,7 @@ async def broadcast_daily_quote(bot: Bot) -> int:
 
     quote_idx, quote = await get_daily_quote_unique()
     text = format_cafe_quote_message(quote)
+    markup = quote_dismiss_keyboard()
     sent_count = 0
 
     today_str = datetime.now(TEHRAN_TZ).strftime("%Y-%m-%d")
@@ -105,7 +113,8 @@ async def broadcast_daily_quote(bot: Bot) -> int:
 
     for uid in user_ids:
         try:
-            await bot.send_message(uid, text, parse_mode="HTML")
+            sent_msg = await bot.send_message(uid, text, parse_mode="HTML", reply_markup=markup)
+            await db.record_chat_message(uid, sent_msg.message_id)
             sent_count += 1
             await asyncio.sleep(0.05)  # جلوگیری از محدودیت Flood تلگرام
         except TelegramForbiddenError:
@@ -117,7 +126,8 @@ async def broadcast_daily_quote(bot: Bot) -> int:
             logger.warning(f"Flood control: waiting {e.retry_after}s")
             await asyncio.sleep(e.retry_after + 1)
             try:
-                await bot.send_message(uid, text, parse_mode="HTML")
+                sent_msg = await bot.send_message(uid, text, parse_mode="HTML", reply_markup=markup)
+                await db.record_chat_message(uid, sent_msg.message_id)
                 sent_count += 1
             except Exception:
                 pass

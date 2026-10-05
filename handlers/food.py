@@ -59,12 +59,18 @@ async def handle_food_item_input(message: Message, state: FSMContext):
     current_items.extend(new_candidates)
     await state.update_data(items=current_items)
 
+    await db.cleanup_chat_history(message.bot, message.from_user.id)
     text = msg_food_picker_intro(group_tone, group_title, current_items)
-    await message.answer(
+    sent = await message.answer(
         text,
         parse_mode="HTML",
         reply_markup=kb.food_picker_keyboard(group_id, len(current_items))
     )
+    await db.record_chat_message(message.from_user.id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("food:spin:"))

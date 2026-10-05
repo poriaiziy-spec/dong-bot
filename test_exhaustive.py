@@ -326,8 +326,9 @@ async def test_all_scenarios():
         kb.food_result_keyboard(BIG_GRP)
     ]
 
-    # همچنین کلیدهای داینامیک درون reports.py
+    # همچنین کلیدهای داینامیک درون reports.py و motivational.py
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from motivational import quote_dismiss_keyboard
     reports_dynamic_kb = [
         InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="تست اعلام", callback_data=f"pay:notify:{BIG_GRP}:{BIG_USER}:{BIG_USER}:{BIG_AMT}"),
@@ -340,9 +341,19 @@ async def test_all_scenarios():
         InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="تایید واریز", callback_data=f"pay:ack:{BIG_USER}:{BIG_USER}:{BIG_AMT}"),
             InlineKeyboardButton(text="عدم واریز", callback_data=f"pay:nack:{BIG_USER}:{BIG_USER}")
-        ]])
+        ]]),
+        quote_dismiss_keyboard()
     ]
     keyboards_to_test.extend(reports_dynamic_kb)
+
+    # تست سیستم ثبت و پاکسازی پیام‌های قبلی چت
+    test_uid = 888111
+    await db.record_chat_message(test_uid, 101)
+    await db.record_chat_message(test_uid, 102)
+    await db.record_chat_message(test_uid, 103)
+    cleared_ids = await db.get_and_clear_chat_messages(test_uid)
+    assert cleared_ids == [101, 102, 103], f"Expected [101, 102, 103], got {cleared_ids}"
+    assert len(await db.get_and_clear_chat_messages(test_uid)) == 0
 
     total_buttons_tested = 0
     for kb_obj in keyboards_to_test:

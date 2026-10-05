@@ -50,8 +50,14 @@ async def handle_expense_title(message: Message, state: FSMContext):
     group_id = data.get("group_id")
     tone = data.get("tone") or (await db.get_group_tone(group_id) if group_id else "friendly")
     
+    await db.cleanup_chat_history(message.bot, message.from_user.id)
     text = msg_expense_amount_prompt(tone, title)
-    await message.answer(text, parse_mode="HTML", reply_markup=kb.cancel_keyboard(group_id))
+    sent = await message.answer(text, parse_mode="HTML", reply_markup=kb.cancel_keyboard(group_id))
+    await db.record_chat_message(message.from_user.id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 @router.message(ExpenseCreationStates.waiting_for_amount)
@@ -73,12 +79,18 @@ async def handle_expense_amount(message: Message, state: FSMContext):
     members = await db.get_group_members(group_id)
     await state.set_state(ExpenseCreationStates.waiting_for_payer)
     
+    await db.cleanup_chat_history(message.bot, message.from_user.id)
     text = msg_expense_payer_prompt(tone, data["title"], format_amount(amount))
-    await message.answer(
+    sent = await message.answer(
         text,
         parse_mode="HTML",
         reply_markup=kb.payer_select_keyboard(group_id, members, message.from_user.id)
     )
+    await db.record_chat_message(message.from_user.id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("fsm:payer:"))

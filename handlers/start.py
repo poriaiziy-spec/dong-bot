@@ -47,6 +47,9 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
     if not user:
         return
         
+    # پاکسازی تمام پیام‌های مکالمه قبلی از صفحه چت جهت تمیزی و آرامش چت
+    await db.cleanup_chat_history(message.bot, user.id)
+
     await db.upsert_user(user.id, user.username, user.full_name)
     calling_name = await db.get_user_calling_name(user.id)
     if not calling_name or not is_clean_persian_name(calling_name):
@@ -71,7 +74,12 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
             "دوست داری با چه اسمی صدات بزنم تا همیشه با عشق و احترام به یاد داشته باشم؟ 🥰\n\n"
             "✍️ <b>لطفاً اسمت رو قشنگ برام بنویس و بفرست جانم:</b>"
         )
-        await message.answer(text, parse_mode="HTML")
+        sent = await message.answer(text, parse_mode="HTML")
+        await db.record_chat_message(user.id, sent.message_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
         return
 
     # بررسی پیوستن با لینک دعوت (Deep Linking)
@@ -94,14 +102,25 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
                     f"👥 جمعمون {len(members)} نفره‌ست. بریم سراغ حساب‌کتاب‌ها جانم:"
                 )
             
-            await message.answer(
+            sent = await message.answer(
                 msg,
                 parse_mode="HTML",
                 reply_markup=kb.group_dashboard_keyboard(group["id"])
             )
+            await db.record_chat_message(user.id, sent.message_id)
+            try:
+                await message.delete()
+            except Exception:
+                pass
             return
         else:
-            await message.answer("⚠️ این لینک دعوت کار نمی‌کنه عزیز دلم! یا منقضی شده یا اشتباه فرستادی.")
+            sent = await message.answer("⚠️ این لینک دعوت کار نمی‌کنه عزیز دلم! یا منقضی شده یا اشتباه فرستادی.")
+            await db.record_chat_message(user.id, sent.message_id)
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
 
     welcome_text = (
         f"سلام جان دلم، <b>{safe(calling_name)}</b> قشنگم! خیلی خوش اومدی ☕❤️✨\n\n"
@@ -110,11 +129,16 @@ async def handle_start(message: Message, command: CommandObject, state: FSMConte
         "🎭 <b>یه راز بین خودمون:</b> می‌تونی برام مشخص کنی تو جمع‌ها چطوری باهاتون حرف بزنم؛ رسمی و شیک، یا صمیمی و رفاقتی، یا حتی شیطون و تیکه‌انداز (+18)! 😈\n\n"
         "خب جانِ دلم، بگو ببینم امروز قراره چه برنامه‌ای با هم داشته باشیم؟ از منوی زیر انتخاب کن تا با جون و دل برات انجام بدم:"
     )
-    await message.answer(
+    sent = await message.answer(
         welcome_text,
         parse_mode="HTML",
         reply_markup=kb.main_menu_keyboard()
     )
+    await db.record_chat_message(user.id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 @router.message(NamePromptStates.waiting_for_name)
@@ -135,7 +159,24 @@ async def handle_name_input(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="✅ آره، همین درسته جانم", callback_data="name:confirm")],
         [InlineKeyboardButton(text="✏️ نه، می‌خوام عوضش کنم", callback_data="name:retry")]
     ])
-    await message.answer(text, parse_mode="HTML", reply_markup=markup)
+    await db.cleanup_chat_history(message.bot, message.from_user.id)
+    sent = await message.answer(text, parse_mode="HTML", reply_markup=markup)
+    await db.record_chat_message(message.from_user.id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "quote:dismiss")
+async def handle_quote_dismiss(callback: CallbackQuery):
+    """حذف پیام صبحگاهی پس از اعلام رضایت کاربر تا چت شلوغ نشود"""
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جانِ دلم"
+    await callback.answer(f"نوش جونت و روزت پر از انرژی و اتفاق‌های قشنگ {calling_name} قشنگم! ☕❤️✨", show_alert=False)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data == "name:confirm")
@@ -162,6 +203,7 @@ async def handle_name_confirm(callback: CallbackQuery, state: FSMContext):
                 f"👥 جمعمون تا الان {len(members)} نفره شده و با اومدنت حسابی قشنگ‌تر شد! بریم تو داشبورد گروه ببینیم چه خبره عزیز دلم:"
             )
             await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.group_dashboard_keyboard(group["id"]))
+            await db.cleanup_chat_history(callback.bot, user_id, keep_message_id=callback.message.message_id)
             return
             
     welcome_text = (
@@ -169,6 +211,7 @@ async def handle_name_confirm(callback: CallbackQuery, state: FSMContext):
         "بگو ببینم عزیز دلم، از منوی زیر چه کاری برات انجام بدم؟"
     )
     await callback.message.edit_text(welcome_text, parse_mode="HTML", reply_markup=kb.main_menu_keyboard())
+    await db.cleanup_chat_history(callback.bot, user_id, keep_message_id=callback.message.message_id)
 
 
 @router.callback_query(F.data == "name:retry")
@@ -197,8 +240,15 @@ async def handle_name_edit_prompt(event: Message | CallbackQuery, state: FSMCont
     if isinstance(event, CallbackQuery):
         await event.answer()
         await event.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_markup)
+        await db.cleanup_chat_history(event.bot, user_id, keep_message_id=event.message.message_id)
     else:
-        await event.answer(text, parse_mode="HTML", reply_markup=cancel_markup)
+        await db.cleanup_chat_history(event.bot, user_id)
+        sent = await event.answer(text, parse_mode="HTML", reply_markup=cancel_markup)
+        await db.record_chat_message(user_id, sent.message_id)
+        try:
+            await event.delete()
+        except Exception:
+            pass
 
 
 @router.message(Command("help"))
@@ -214,8 +264,15 @@ async def handle_help(event: Message | CallbackQuery, state: FSMContext):
     if isinstance(event, CallbackQuery):
         await event.answer()
         await event.message.edit_text(help_text, parse_mode="HTML", reply_markup=reply_markup)
+        await db.cleanup_chat_history(event.bot, event.from_user.id, keep_message_id=event.message.message_id)
     else:
-        await event.answer(help_text, parse_mode="HTML", reply_markup=reply_markup)
+        await db.cleanup_chat_history(event.bot, event.from_user.id)
+        sent = await event.answer(help_text, parse_mode="HTML", reply_markup=reply_markup)
+        await db.record_chat_message(event.from_user.id, sent.message_id)
+        try:
+            await event.delete()
+        except Exception:
+            pass
 
 
 @router.message(Command("cancel"))
@@ -224,10 +281,16 @@ async def handle_cancel(message: Message, state: FSMContext):
     """لغو عملیات جاری و پاکسازی حالت FSM"""
     current_state = await state.get_state()
     await state.clear()
+    await db.cleanup_chat_history(message.bot, message.from_user.id)
     if current_state:
-        await message.answer("❌ عملیات جاری لغو شد و به منوی اصلی برگشتیم جان دلم.", reply_markup=kb.main_menu_keyboard())
+        sent = await message.answer("❌ عملیات جاری لغو شد و به منوی اصلی برگشتیم جان دلم.", reply_markup=kb.main_menu_keyboard())
     else:
-        await message.answer("ℹ️ در حال حاضر عملیات فعالی وجود ندارد عزیز دلم.", reply_markup=kb.main_menu_keyboard())
+        sent = await message.answer("ℹ️ در حال حاضر عملیات فعالی وجود ندارد عزیز دلم.", reply_markup=kb.main_menu_keyboard())
+    await db.record_chat_message(message.from_user.id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data == "nav:main")
@@ -253,6 +316,7 @@ async def handle_nav_main(callback: CallbackQuery, state: FSMContext):
         parse_mode="HTML",
         reply_markup=kb.main_menu_keyboard()
     )
+    await db.cleanup_chat_history(callback.bot, user.id, keep_message_id=callback.message.message_id)
 
 
 @router.message(Command("reset", "reset_all_data"))

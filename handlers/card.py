@@ -74,6 +74,7 @@ async def handle_card_number_input(message: Message, state: FSMContext):
         
     user_id = message.from_user.id
     await db.ensure_user_exists(user_id, message.from_user.full_name, message.from_user.username)
+    await db.cleanup_chat_history(message.bot, user_id)
     
     detected_bank = detect_bank_name(clean)
     if detected_bank:
@@ -93,16 +94,26 @@ async def handle_card_number_input(message: Message, state: FSMContext):
             f"🏦 بانک: <b>{safe(detected_bank)}</b>\n\n"
             f"💼 تعداد کل کارت‌های شما: {len(cards)} کارت"
         )
-        await message.answer(text, parse_mode="HTML", reply_markup=kb.cards_list_keyboard(cards))
+        sent = await message.answer(text, parse_mode="HTML", reply_markup=kb.cards_list_keyboard(cards))
+        await db.record_chat_message(user_id, sent.message_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
     else:
         # اگر بانک به طور خودکار شناخته نشد، از کاربر نام بانک را بپرس
         await state.update_data(temp_card=clean)
         await state.set_state(CardRegistrationStates.waiting_for_bank_name)
-        await message.answer(
+        sent = await message.answer(
             f"🔢 شماره کارت: <code>{format_card_number(clean)}</code>\n\n"
             f"🏦 بانک این کارتت رو تشخیص ندادم {safe(calling_name)} قشنگم! لطفاً <b>نام بانک</b> رو برام بنویس (مثلاً: بانک ملت، بلو، سامان):",
             parse_mode="HTML"
         )
+        await db.record_chat_message(user_id, sent.message_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
 
 
 @router.message(CardRegistrationStates.waiting_for_bank_name)
@@ -117,6 +128,7 @@ async def handle_bank_name_input(message: Message, state: FSMContext):
     card_number = data.get("temp_card")
     user_id = message.from_user.id
     await db.ensure_user_exists(user_id, message.from_user.full_name, message.from_user.username)
+    await db.cleanup_chat_history(message.bot, user_id)
     
     card_id, is_new = await db.add_user_card(user_id, card_number, bank_name)
     await state.clear()
@@ -129,7 +141,12 @@ async def handle_bank_name_input(message: Message, state: FSMContext):
         f"🏦 بانک: <b>{safe(bank_name)}</b>\n\n"
         f"💼 تعداد کل کارت‌های شما: {len(cards)} کارت"
     )
-    await message.answer(text, parse_mode="HTML", reply_markup=kb.cards_list_keyboard(cards))
+    sent = await message.answer(text, parse_mode="HTML", reply_markup=kb.cards_list_keyboard(cards))
+    await db.record_chat_message(user_id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("card:view:"))
