@@ -268,9 +268,23 @@ async def test_all_scenarios():
     active_before = await db.get_active_expenses(grp_id)
     assert len(active_before) == 1
 
+    # تست ویرایش مبلغ هزینه فعال (افزایش از ۳۰۰ هزار به ۴۵۰ هزار)
+    e1_data = await db.get_expense_by_id(e1, grp_id)
+    assert e1_data is not None and e1_data["amount"] == 300000
+    upd_res, _ = await db.update_expense_amount(e1, grp_id, 450000)
+    assert upd_res is True
+    e1_updated = await db.get_expense_by_id(e1, grp_id)
+    assert e1_updated["amount"] == 450000
+    assert all(s["share_amount"] == 150000 for s in e1_updated["shares"])
+
     # صفر کردن حساب‌های گروه
     settled_cnt = await db.settle_group(grp_id)
     assert settled_cnt == 1
+
+    # تست جلوگیری از ویرایش هزینه بعد از تسویه کامل حساب
+    upd_after_settle, settle_err = await db.update_expense_amount(e1, grp_id, 600000)
+    assert upd_after_settle is False
+    assert "تسویه شده" in settle_err
 
     # بررسی خالی شدن هزینه‌های فعال
     active_after = await db.get_active_expenses(grp_id)
@@ -320,7 +334,8 @@ async def test_all_scenarios():
         kb.shares_select_keyboard(BIG_GRP, [{"id": BIG_USER, "full_name": "تست"}], {BIG_USER}),
         kb.zero_confirm_keyboard(BIG_GRP),
         kb.expense_history_keyboard([{"id": BIG_EXP, "title": "خرید", "amount": BIG_AMT, "settled": 0}], BIG_GRP),
-        kb.single_expense_keyboard(BIG_EXP, BIG_GRP),
+        kb.single_expense_keyboard(BIG_EXP, BIG_GRP, can_edit=False),
+        kb.single_expense_keyboard(BIG_EXP, BIG_GRP, can_edit=True),
         kb.cancel_keyboard(BIG_GRP),
         kb.food_picker_keyboard(BIG_GRP, 3),
         kb.food_result_keyboard(BIG_GRP)

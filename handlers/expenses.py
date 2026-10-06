@@ -1,10 +1,10 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
 import database as db
 import keyboards as kb
-from states import ExpenseCreationStates
+from states import ExpenseCreationStates, ExpenseEditStates
 from helpers import clean_amount_input, format_amount, safe
 from tones import (
     msg_expense_title_prompt,
@@ -253,7 +253,9 @@ async def handle_expense_history(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("exp:view:"))
-async def handle_view_single_expense(callback: CallbackQuery):
+async def handle_view_single_expense(callback: CallbackQuery, state: FSMContext = None):
+    if state:
+        await state.clear()
     await callback.answer()
     parts = callback.data.split(":")
     exp_id = int(parts[2])
@@ -271,8 +273,12 @@ async def handle_view_single_expense(callback: CallbackQuery):
         await callback.answer("هزینه یافت نشد عزیز دلم!", show_alert=True)
         return
 
+    group = await db.get_group_by_id(group_id)
+    is_settled = bool(expense.get("settled"))
+    can_edit = bool(group and (group["created_by"] == callback.from_user.id or expense.get("payer_id") == callback.from_user.id) and not is_settled)
+
     calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
-    status = "تسویه شده ✅" if expense.get("settled") else "فعال در دوره جاری ⏳"
+    status = "تسویه شده ✅" if is_settled else "فعال در دوره جاری ⏳"
     text = (
         f"🔍 <b>جزئیات این هزینه برای شما، {safe(calling_name)} جانم:</b> ☕❤️\n\n"
         f"🏷️ بابت: <b>{safe(expense['title'])}</b>\n"
@@ -284,8 +290,132 @@ async def handle_view_single_expense(callback: CallbackQuery):
     await callback.message.edit_text(
         text,
         parse_mode="HTML",
-        reply_markup=kb.single_expense_keyboard(exp_id, group_id)
+        reply_markup=kb.single_expense_keyboard(exp_id, group_id, can_edit=can_edit)
     )
+
+
+@router.callback_query(F.data.startswith("exp:edit_amt:"))
+async def handle_start_edit_expense_amount(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    exp_id = int(parts[2])
+    group_id = int(parts[3])
+    
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+        
+    expense = await db.get_expense_by_id(exp_id, group_id)
+    if not expense:
+        await callback.answer("هزینه یافت نشد عزیز دلم!", show_alert=True)
+        return
+        
+    if expense.get("settled"):
+        await callback.answer("⚠️ این هزینه قبلاً تسویه شده و قابل ویرایش نیست عزیز دلم!", show_alert=True)
+        return
+        
+    is_authorized = (
+        callback.from_user.id == group["created_by"] or 
+        expense.get("payer_id") == callback.from_user.id
+    )
+    if not is_authorized:
+        await callback.answer("⚠️ فقط ثبت‌کننده این هزینه یا سرگروه مجاز به ویرایش مبلغ هستند جان دلم!", show_alert=True)
+        return
+
+    await state.clear()
+    await state.set_state(ExpenseEditStates.waiting_for_new_amount)
+    await state.update_data(edit_expense_id=exp_id, edit_group_id=group_id)
+    
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+    text = (
+        f"✏️ <b>ویرایش مبلغ هزینه «{safe(expense['title'])}»</b> 🌸\n\n"
+        f"💰 مبلغ فعلی: <b>{format_amount(expense['amount'])}</b>\n\n"
+        f"{safe(calling_name)} قشنگم، لطفاً مبلغ جدید رو به <b>تومان</b> برام بفرست:\n"
+        f"<i>(مثلاً: <code>50000</code> یا <code>۵۰ هزار</code> یا <code>50k</code>)</i>"
+    )
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ انصراف", callback_data=f"exp:view:{exp_id}:{group_id}")]
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+    await callback.answer()
+
+
+@router.message(ExpenseEditStates.waiting_for_new_amount)
+async def handle_expense_new_amount_input(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    calling_name = await db.get_user_calling_name(user_id) or "جان دلم"
+    
+    data = await state.get_data()
+    exp_id = data.get("edit_expense_id")
+    group_id = data.get("edit_group_id")
+    
+    if not exp_id or not group_id:
+        await state.clear()
+        sent = await message.answer("⚠️ اطلاعات هزینه منقضی شده است عزیز دلم.", reply_markup=kb.main_menu_keyboard())
+        await db.record_chat_message(chat_id, sent.message_id)
+        return
+        
+    amount = clean_amount_input(message.text or "")
+    if not amount or amount <= 0:
+        sent = await message.answer(
+            f"⚠️ مبلغ نامعتبره {safe(calling_name)} قشنگم! لطفاً مبلغ جدید رو به عدد یا با ضریب تومان بفرست (مثلاً: <code>250000</code> یا <code>۲۵۰ هزار</code>):",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ انصراف", callback_data=f"exp:view:{exp_id}:{group_id}")]
+            ])
+        )
+        await db.record_chat_message(chat_id, sent.message_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        return
+        
+    success, err_msg = await db.update_expense_amount(exp_id, group_id, amount)
+    await state.clear()
+    
+    # تمیزکاری تاریخچه چت قبلی
+    await db.cleanup_chat_history(message.bot, chat_id)
+    
+    if not success:
+        sent = await message.answer(
+            f"⚠️ {safe(err_msg or 'خطایی در به‌روزرسانی هزینه رخ داد عزیز دلم!')}",
+            reply_markup=kb.group_dashboard_keyboard(group_id)
+        )
+        await db.record_chat_message(chat_id, sent.message_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        return
+        
+    expense = await db.get_expense_by_id(exp_id, group_id)
+    group = await db.get_group_by_id(group_id)
+    is_settled = bool(expense.get("settled")) if expense else False
+    can_edit = bool(group and (group["created_by"] == user_id or (expense and expense.get("payer_id") == user_id)) and not is_settled)
+    
+    status = "تسویه شده ✅" if is_settled else "فعال در دوره جاری ⏳"
+    payer_name = expense.get('payer_name', 'نامشخص') if expense else 'نامشخص'
+    title = expense.get('title', '') if expense else ''
+    
+    text = (
+        f"✅ <b>مبلغ هزینه با موفقیت به‌روزرسانی و دنگ‌ها مجدداً محاسبه شدند {safe(calling_name)} جانم!</b> 🌸❤️\n\n"
+        f"🏷️ بابت: <b>{safe(title)}</b>\n"
+        f"💰 مبلغ جدید: <b>{format_amount(amount)}</b>\n"
+        f"👤 پرداخت‌کننده: <b>{safe(payer_name)}</b>\n"
+        f"📊 وضعیت: <b>{status}</b>\n"
+    )
+    sent = await message.answer(
+        text,
+        parse_mode="HTML",
+        reply_markup=kb.single_expense_keyboard(exp_id, group_id, can_edit=can_edit)
+    )
+    await db.record_chat_message(chat_id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("exp:del:"))

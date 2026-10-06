@@ -289,16 +289,19 @@ def expense_history_keyboard(expenses: list[dict], group_id: int) -> InlineKeybo
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def single_expense_keyboard(expense_id: int, group_id: int) -> InlineKeyboardMarkup:
-    """مشاهده جزئیات یا حذف یک هزینه"""
-    keyboard = [
-        [
-            InlineKeyboardButton(text="🗑️ حذف این هزینه", callback_data=f"exp:del:{expense_id}:{group_id}")
-        ],
-        [
-            InlineKeyboardButton(text="🔙 بازگشت به تاریخچه", callback_data=f"grp:history:{group_id}")
-        ]
-    ]
+def single_expense_keyboard(expense_id: int, group_id: int, can_edit: bool = False) -> InlineKeyboardMarkup:
+    """مشاهده جزئیات، ویرایش مبلغ یا حذف یک هزینه"""
+    keyboard = []
+    if can_edit:
+        keyboard.append([
+            InlineKeyboardButton(text="✏️ ویرایش مبلغ هزینه", callback_data=f"exp:edit_amt:{expense_id}:{group_id}")
+        ])
+    keyboard.append([
+        InlineKeyboardButton(text="🗑️ حذف این هزینه", callback_data=f"exp:del:{expense_id}:{group_id}")
+    ])
+    keyboard.append([
+        InlineKeyboardButton(text="🔙 بازگشت به تاریخچه", callback_data=f"grp:history:{group_id}")
+    ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 

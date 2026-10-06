@@ -153,6 +153,34 @@ async def test_full_pipeline():
     assert settlements[0]["amount"] + settlements[1]["amount"] == 125000
     print("✅ الگوریتم محاسبه دنگ و تسویه دقیقاً درست عمل کرد.")
 
+    # تست دریافت هزینه و ویرایش مبلغ هزینه (توسط ثبت‌کننده)
+    single_exp = await db.get_expense_by_id(exp1, group_id)
+    assert single_exp is not None
+    assert single_exp["amount"] == 300000
+    assert len(single_exp["shares"]) == 3
+
+    # ویرایش مبلغ هزینه شام از ۳۰۰ هزار به ۶۰۰ هزار تومان
+    upd_ok, upd_err = await db.update_expense_amount(exp1, group_id, 600000)
+    assert upd_ok is True
+    assert upd_err is None
+
+    # بررسی مقادیر پس از ویرایش: ۶۰۰ هزار تقسیم بر ۳ = هر نفر ۲۰۰ هزار
+    single_exp_updated = await db.get_expense_by_id(exp1, group_id)
+    assert single_exp_updated["amount"] == 600000
+    for s in single_exp_updated["shares"]:
+        assert s["share_amount"] == 200000
+
+    # بررسی ترازهای جدید پس از ویرایش مبلغ
+    active_after_edit = await db.get_active_expenses(group_id)
+    calc_res_edit = calculate_group_balances(members, active_after_edit)
+    assert calc_res_edit["total_spent"] == 750000  # 600000 + 150000
+    stats_edit = {s["user"]["id"]: s for s in calc_res_edit["member_stats"]}
+    assert stats_edit[101]["net"] == 325000
+    print("✅ تست ویرایش مبلغ هزینه و محاسبه مجدد ترازها و سهم‌ها با موفقیت پاس شد.")
+
+    # برگرداندن به ۳۰۰ هزار جهت تطابق با بقیه مراحل تست
+    await db.update_expense_amount(exp1, group_id, 300000)
+
     # تست حذف عضو توسط سرگروه
     removed = await db.remove_group_member(group_id, 103)
     assert removed is True

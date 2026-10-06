@@ -523,6 +523,78 @@ async def get_group_history(group_id: int, limit: int = 20) -> list[dict]:
             return [dict(r) for r in await cursor.fetchall()]
 
 
+async def get_expense_by_id(expense_id: int, group_id: int) -> dict | None:
+    """دریافت اطلاعات یک هزینه به همراه پرداخت‌کننده و سهم‌ها"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT e.*, u.full_name AS payer_name, u.username AS payer_username
+            FROM expenses e
+            JOIN users u ON e.payer_id = u.id
+            WHERE e.id = ? AND e.group_id = ?
+        """, (expense_id, group_id)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            expense = dict(row)
+
+        async with db.execute("""
+            SELECT es.user_id, es.share_amount, u.full_name, u.username
+            FROM expense_shares es
+            JOIN users u ON es.user_id = u.id
+            WHERE es.expense_id = ?
+        """, (expense_id,)) as cursor_s:
+            expense["shares"] = [dict(r) for r in await cursor_s.fetchall()]
+
+        return expense
+
+
+async def update_expense_amount(expense_id: int, group_id: int, new_amount: int) -> tuple[bool, str | None]:
+    """
+    ویرایش مبلغ هزینه و محاسبه مجدد سهم اعضا به صورت مساوی
+    """
+    if new_amount <= 0:
+        return False, "مبلغ وارد شده نامعتبر است."
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # بررسی وجود هزینه و عدم تسویه
+        async with db.execute("SELECT id, settled FROM expenses WHERE id = ? AND group_id = ?", (expense_id, group_id)) as cursor:
+            exp_row = await cursor.fetchone()
+            if not exp_row:
+                return False, "هزینه یافت نشد."
+            if exp_row["settled"]:
+                return False, "این هزینه قبلاً تسویه شده و قابل ویرایش نیست."
+
+        # دریافت سهم‌های فعلی برای این هزینه
+        async with db.execute("SELECT user_id FROM expense_shares WHERE expense_id = ? ORDER BY id ASC", (expense_id,)) as cursor:
+            share_rows = await cursor.fetchall()
+            user_ids = [r["user_id"] for r in share_rows]
+
+        if not user_ids:
+            return False, "سهمی برای این هزینه ثبت نشده است."
+
+        count = len(user_ids)
+        base_share = new_amount // count
+        remainder = new_amount % count
+
+        # به‌روزرسانی مبلغ هزینه
+        await db.execute("UPDATE expenses SET amount = ? WHERE id = ? AND group_id = ?", (new_amount, expense_id, group_id))
+
+        # به‌روزرسانی سهم‌ها
+        for i, uid in enumerate(user_ids):
+            share_amt = base_share + (remainder if i == 0 else 0)
+            await db.execute("""
+                UPDATE expense_shares 
+                SET share_amount = ? 
+                WHERE expense_id = ? AND user_id = ?
+            """, (share_amt, expense_id, uid))
+
+        await db.commit()
+        schedule_cloud_backup()
+        return True, None
+
+
 async def delete_expense(expense_id: int, group_id: int) -> bool:
     """حذف یک هزینه"""
     async with aiosqlite.connect(DB_PATH) as db:

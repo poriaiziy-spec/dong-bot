@@ -20,3 +20,6 @@ class NamePromptStates(StatesGroup):
     waiting_for_name = State()
     waiting_for_confirm = State()
 
+class ExpenseEditStates(StatesGroup):
+    waiting_for_new_amount = State()
+
