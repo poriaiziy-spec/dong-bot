@@ -35,7 +35,7 @@ async def handle_group_report(callback: CallbackQuery):
         text = render_no_expenses_msg(group_tone, group["title"])
         markup = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💸 ثبت هزینه جدید", callback_data=f"exp:add:{group_id}")],
-            [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+            [InlineKeyboardButton(text="🔙 بازگشت به بخش تسویه", callback_data=f"grp:sec_settle:{group_id}")]
         ])
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
         return
@@ -77,7 +77,7 @@ async def handle_group_report(callback: CallbackQuery):
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⚖️ فرمول نهایی تسویه حساب", callback_data=f"grp:settle_calc:{group_id}")],
         [InlineKeyboardButton(text="🔄 صفر کردن حساب‌ها", callback_data=f"grp:zero_confirm:{group_id}")],
-        [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+        [InlineKeyboardButton(text="🔙 بازگشت به بخش تسویه", callback_data=f"grp:sec_settle:{group_id}")]
     ])
     
     await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=markup)
@@ -157,7 +157,7 @@ async def handle_settlement_calculation(callback: CallbackQuery):
     ])
     markup_buttons.append([
         InlineKeyboardButton(text="🔄 صفر کردن حساب‌ها", callback_data=f"grp:zero_confirm:{group_id}"),
-        InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")
+        InlineKeyboardButton(text="🔙 بازگشت به بخش تسویه", callback_data=f"grp:sec_settle:{group_id}")
     ])
     
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=markup_buttons))

@@ -197,6 +197,105 @@ async def handle_view_group(callback: CallbackQuery, state: FSMContext):
     )
 
 
+@router.callback_query(F.data.startswith("grp:sec_exp:"))
+async def handle_section_expenses(callback: CallbackQuery, state: FSMContext = None):
+    if state:
+        await state.clear()
+    await callback.answer()
+    group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.message.edit_text("⚠️ این گروه یافت نشد.", reply_markup=kb.main_menu_keyboard())
+        return
+
+    active_expenses = await db.get_active_expenses(group_id)
+    total_active = sum(e["amount"] for e in active_expenses)
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+
+    text = (
+        f"💰 <b>بخش هزینه‌ها و دنگ‌های دورهمی «{safe(group['title'])}»</b> ☕❤️\n\n"
+        f"{safe(calling_name)} قشنگم، اینجا می‌تونی هزینه‌های جدید رو ثبت کنی یا هزینه‌های قبلی رو بررسی و ویرایش کنی:\n\n"
+        f"🧾 <b>تعداد خریدهای فعال این دوره:</b> {len(active_expenses)} مورد\n"
+        f"💵 <b>مجموع کل خرج‌های دوره:</b> {format_amount(total_active)}\n\n"
+        "یکی از گزینه‌های زیر رو انتخاب کن عزیز دلم:"
+    )
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=kb.group_expenses_section_keyboard(group_id)
+    )
+
+
+@router.callback_query(F.data.startswith("grp:sec_settle:"))
+async def handle_section_settle(callback: CallbackQuery, state: FSMContext = None):
+    if state:
+        await state.clear()
+    await callback.answer()
+    group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.message.edit_text("⚠️ این گروه یافت نشد.", reply_markup=kb.main_menu_keyboard())
+        return
+
+    members = await db.get_group_members(group_id)
+    active_expenses = await db.get_active_expenses(group_id)
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+
+    calc_res = calculate_group_balances(members, active_expenses)
+    total_spent = calc_res["total_spent"]
+    settlements_count = len(calc_res["settlements"])
+
+    if settlements_count == 0:
+        settle_status = "همه حساب‌ها صاف و تسویه هستن ✅"
+    else:
+        settle_status = f"{settlements_count} تراکنش برای صاف شدن حساب‌ها نیازه ⏳"
+
+    text = (
+        f"📊 <b>بخش حساب‌ها و تسویه دورهمی «{safe(group['title'])}»</b> ⚖️❤️\n\n"
+        f"{safe(calling_name)} جانم، وضعیت تراز مالی، بدهی‌ها و فرمول تسویه حساب اینجاست:\n\n"
+        f"💰 <b>کل هزینه‌های این دوره:</b> {format_amount(total_spent)}\n"
+        f"📌 <b>وضعیت تسویه:</b> {settle_status}\n\n"
+        "گزینه مورد نظرت رو لمس کن قشنگم:"
+    )
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=kb.group_settle_section_keyboard(group_id)
+    )
+
+
+@router.callback_query(F.data.startswith("grp:sec_settings:"))
+async def handle_section_settings(callback: CallbackQuery, state: FSMContext = None):
+    if state:
+        await state.clear()
+    await callback.answer()
+    group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.message.edit_text("⚠️ این گروه یافت نشد.", reply_markup=kb.main_menu_keyboard())
+        return
+
+    is_creator = (group["created_by"] == callback.from_user.id)
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+    current_tone = await db.get_group_tone(group_id)
+    current_tone_name = TONE_NAMES.get(current_tone, "😊 دوستانه و خودمونی")
+
+    role_text = "👑 سرگروه و مدیر دورهمی" if is_creator else "👤 عضو دورهمی"
+
+    text = (
+        f"⚙️ <b>تنظیمات و مدیریت دورهمی «{safe(group['title'])}»</b> 🛠️❤️\n\n"
+        f"{safe(calling_name)} جانم، تنظیمات و ابزارهای گروه اینجاست:\n\n"
+        f"🎭 <b>لحن صحبت فعلی ربات:</b> {current_tone_name}\n"
+        f"🎖️ <b>نقش شما:</b> {role_text}\n\n"
+        "برای ادامه یکی از گزینه‌ها رو انتخاب کن:"
+    )
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=kb.group_settings_section_keyboard(group_id, is_creator=is_creator)
+    )
+
+
 @router.callback_query(F.data.startswith("grp:members_manage:"))
 async def handle_members_manage(callback: CallbackQuery):
     group_id = int(callback.data.split(":")[2])
@@ -219,7 +318,7 @@ async def handle_members_manage(callback: CallbackQuery):
     if not other_members:
         text = f"👑 فقط خودت توی این جمع هستی <b>{safe(calling_name)}</b> جانم! عضو دیگه‌ای برای حذف وجود نداره ❤️"
         markup = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+            [InlineKeyboardButton(text="🔙 بازگشت به تنظیمات", callback_data=f"grp:sec_settings:{group_id}")]
         ])
     else:
         text = (
@@ -304,7 +403,7 @@ async def handle_kick_do(callback: CallbackQuery, bot: Bot):
     if not other_members:
         text = f"👑 عضو دیگری برای حذف در این گروه وجود ندارد {safe(calling_name)} جانم."
         markup = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+            [InlineKeyboardButton(text="🔙 بازگشت به تنظیمات", callback_data=f"grp:sec_settings:{group_id}")]
         ])
     else:
         text = f"👑 <b>مدیریت اعضای گروه «{safe(group['title'])}»، {safe(calling_name)} جانم:</b>"
@@ -431,7 +530,7 @@ async def handle_group_invite(callback: CallbackQuery, bot: Bot):
     ]
     if is_creator:
         buttons.append([InlineKeyboardButton(text="🔄 باطل کردن و ساخت لینک جدید", callback_data=f"grp:invite_regen:{group_id}")])
-    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")])
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به تنظیمات", callback_data=f"grp:sec_settings:{group_id}")])
 
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 

@@ -38,35 +38,69 @@ def groups_list_keyboard(groups: list[dict]) -> InlineKeyboardMarkup:
 
 
 def group_dashboard_keyboard(group_id: int, is_creator: bool = False) -> InlineKeyboardMarkup:
-    """داشبورد و امکانات گروه دنگ"""
+    """داشبورد اصلی گروه به صورت شبکه ۲ در ۲ دسته‌بندی شده"""
     keyboard = [
         [
-            InlineKeyboardButton(text="💸 ثبت هزینه جدید", callback_data=f"exp:add:{group_id}"),
-            InlineKeyboardButton(text="🍕 انتخاب رندوم غذا", callback_data=f"food:start:{group_id}")
+            InlineKeyboardButton(text="💰 هزینه‌ها و دنگ", callback_data=f"grp:sec_exp:{group_id}"),
+            InlineKeyboardButton(text="📊 حساب‌ها و تسویه", callback_data=f"grp:sec_settle:{group_id}")
         ],
         [
-            InlineKeyboardButton(text="📊 گزارش حساب‌ها", callback_data=f"grp:report:{group_id}"),
+            InlineKeyboardButton(text="🍕 گردونه غذا", callback_data=f"food:start:{group_id}"),
+            InlineKeyboardButton(text="⚙️ تنظیمات و مدیریت", callback_data=f"grp:sec_settings:{group_id}")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 بازگشت به لیست گروه‌ها", callback_data="nav:my_groups")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def group_expenses_section_keyboard(group_id: int) -> InlineKeyboardMarkup:
+    """بخش ۱: ثبت و مدیریت هزینه‌ها"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="💸 ثبت هزینه جدید", callback_data=f"exp:add:{group_id}")
+        ],
+        [
+            InlineKeyboardButton(text="📜 تاریخچه و ویرایش هزینه‌ها", callback_data=f"grp:history:{group_id}")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 بازگشت به منوی دورهمی", callback_data=f"grp:view:{group_id}")
+        ]
+    ])
+
+
+def group_settle_section_keyboard(group_id: int) -> InlineKeyboardMarkup:
+    """بخش ۲: گزارش‌های مالی و تسویه حساب"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📊 وضعیت حساب‌ها و تراز", callback_data=f"grp:report:{group_id}"),
             InlineKeyboardButton(text="⚖️ فرمول تسویه حساب", callback_data=f"grp:settle_calc:{group_id}")
         ],
         [
-            InlineKeyboardButton(text="📜 تاریخچه هزینه‌ها", callback_data=f"grp:history:{group_id}"),
-            InlineKeyboardButton(text="🔄 صفر کردن حساب‌ها", callback_data=f"grp:zero_confirm:{group_id}")
+            InlineKeyboardButton(text="🔄 صفر کردن دوره حساب‌ها", callback_data=f"grp:zero_confirm:{group_id}")
         ],
         [
-            InlineKeyboardButton(text="🎭 تغییر لحن ربات", callback_data=f"grp:tone_menu:{group_id}"),
-            InlineKeyboardButton(text="💌 کارت دعوت اعضا", callback_data=f"grp:invite:{group_id}")
+            InlineKeyboardButton(text="🔙 بازگشت به منوی دورهمی", callback_data=f"grp:view:{group_id}")
+        ]
+    ])
+
+
+def group_settings_section_keyboard(group_id: int, is_creator: bool = False) -> InlineKeyboardMarkup:
+    """بخش ۳: تنظیمات و مدیریت دورهمی"""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="💌 کارت دعوت اعضا", callback_data=f"grp:invite:{group_id}"),
+            InlineKeyboardButton(text="🎭 تغییر لحن ربات", callback_data=f"grp:tone_menu:{group_id}")
         ]
     ]
-    
-    # دکمه‌های سرگروه
     if is_creator:
         keyboard.append([
-            InlineKeyboardButton(text="👑 مدیریت اعضا", callback_data=f"grp:members_manage:{group_id}"),
-            InlineKeyboardButton(text="🗑️ حذف گروه", callback_data=f"grp:del_confirm:{group_id}")
+            InlineKeyboardButton(text="👑 مدیریت و اخراج اعضا", callback_data=f"grp:members_manage:{group_id}"),
+            InlineKeyboardButton(text="🗑️ حذف کامل گروه", callback_data=f"grp:del_confirm:{group_id}")
         ])
-        
     keyboard.append([
-        InlineKeyboardButton(text="🔙 بازگشت به لیست گروه‌ها", callback_data="nav:my_groups")
+        InlineKeyboardButton(text="🔙 بازگشت به منوی دورهمی", callback_data=f"grp:view:{group_id}")
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -75,7 +109,7 @@ def group_delete_confirm_keyboard(group_id: int) -> InlineKeyboardMarkup:
     """تأییدیه حذف کامل گروه توسط سرگروه"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⚠️ بله، گروه کلاً حذف شود", callback_data=f"grp:del_do:{group_id}")],
-        [InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data=f"grp:view:{group_id}")]
+        [InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data=f"grp:sec_settings:{group_id}")]
     ])
 
 
@@ -93,7 +127,7 @@ def members_kick_keyboard(group_id: int, members: list[dict], creator_id: int) -
             )
         ])
     keyboard.append([
-        InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")
+        InlineKeyboardButton(text="🔙 بازگشت به تنظیمات", callback_data=f"grp:sec_settings:{group_id}")
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -124,7 +158,7 @@ def tone_selection_keyboard(group_id: int, current_tone: str = "friendly") -> In
             )
         ])
     buttons.append([
-        InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")
+        InlineKeyboardButton(text="🔙 بازگشت به تنظیمات", callback_data=f"grp:sec_settings:{group_id}")
     ])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -266,7 +300,7 @@ def zero_confirm_keyboard(group_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="⚠️ بله، حساب‌ها تسویه و صفر شوند", callback_data=f"grp:zero_do:{group_id}")
         ],
         [
-            InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data=f"grp:view:{group_id}")
+            InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data=f"grp:sec_settle:{group_id}")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -284,7 +318,7 @@ def expense_history_keyboard(expenses: list[dict], group_id: int) -> InlineKeybo
             )
         ])
     keyboard.append([
-        InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")
+        InlineKeyboardButton(text="🔙 بازگشت به بخش هزینه‌ها", callback_data=f"grp:sec_exp:{group_id}")
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
