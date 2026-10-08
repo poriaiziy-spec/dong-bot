@@ -784,6 +784,85 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             from { opacity: 0; transform: translateY(8px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        /* مودال‌های شیشه‌ای لوکس */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(4, 7, 13, 0.82);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            z-index: 300;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-card {
+            background: linear-gradient(145deg, rgba(20, 27, 44, 0.96), rgba(11, 16, 28, 0.98));
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 440px;
+            padding: 24px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+            transform: scale(0.92) translateY(12px);
+            transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+        }
+
+        .modal-overlay.active .modal-card {
+            transform: scale(1) translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+            border-bottom: 1px solid var(--border-glass);
+            padding-bottom: 12px;
+        }
+
+        .modal-title {
+            font-size: 1.08rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modal-close-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border-glass);
+            color: var(--text-sub);
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: all 0.2s;
+        }
+
+        .modal-close-btn:active {
+            transform: scale(0.9);
+            color: var(--rose-main);
+        }
     </style>
 </head>
 <body>
@@ -800,7 +879,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 <div class="brand-subtitle">پارتنر حساب و کتاب دورهمی</div>
             </div>
         </div>
-        <div class="user-pill" id="userPill" onclick="promptSwitchUser()">
+        <div class="user-pill" id="userPill" onclick="openProfileModal()">
             <span class="avatar-glow-dot"></span>
             <span id="userNameHeader">در حال اتصال...</span>
         </div>
@@ -1096,6 +1175,89 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
     <div class="toast" id="toastMessage">
         <span>✨</span>
         <span id="toastText">عملیات با موفقیت انجام شد</span>
+    </div>
+
+    <!-- مودال اختصاصی ۱: پروفایل کاربری من -->
+    <div class="modal-overlay" id="profileModal" onclick="closeModalOnBg(event, 'profileModal')">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>👤</span>
+                    <span>پروفایل کاربری من</span>
+                </div>
+                <button class="modal-close-btn" onclick="closeProfileModal()">✕</button>
+            </div>
+            
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div style="width: 68px; height: 68px; border-radius: 50%; background: linear-gradient(135deg, #f59e0b, #d97706); margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; box-shadow: 0 0 25px var(--gold-glow); border: 2px solid rgba(255,255,255,0.2);" id="profileAvatarIcon">
+                    ☕
+                </div>
+                <div style="font-size: 1.25rem; font-weight: 900; color: #ffffff;" id="profileModalName">کاربر گرامی</div>
+                <div style="font-size: 0.82rem; color: var(--gold-primary); font-weight: 700; margin-top: 4px;" id="profileModalUsername">@username</div>
+                <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.12); border: 1px solid var(--emerald-main); color: var(--emerald-main); padding: 4px 12px; border-radius: var(--radius-full); font-size: 0.74rem; font-weight: 700; margin-top: 10px;">
+                    <span style="width: 7px; height: 7px; background: var(--emerald-main); border-radius: 50%;"></span>
+                    <span>متصل به حساب تلگرام (احراز هویت شده)</span>
+                </div>
+            </div>
+
+            <div style="background: var(--bg-inner); border: 1px solid var(--border-glass); border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.86rem;">
+                    <span style="color: var(--text-sub);">🆔 شناسه کاربری تلگرام:</span>
+                    <span style="font-family: monospace; font-weight: 800; color: #ffffff;" id="profileModalId">-</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.86rem;">
+                    <span style="color: var(--text-sub);">💳 کارت‌های بانکی ثبت‌شده:</span>
+                    <span style="font-weight: 800; color: var(--gold-primary);" id="profileModalCardsCount">۰ کارت</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 7px 0; font-size: 0.86rem;">
+                    <span style="color: var(--text-sub);">📁 گروه‌های مشترک من:</span>
+                    <span style="font-weight: 800; color: #ffffff;" id="profileModalGroupsCount">۰ گروه</span>
+                </div>
+            </div>
+
+            <div style="font-size: 0.76rem; color: var(--text-muted); text-align: center; margin-bottom: 18px; line-height: 1.6;">
+                🔒 حساب و اطلاعات مالی شما کاملاً اختصاصی و ایمن است و هیچ کاربر دیگری به پنل شما دسترسی ندارد.
+            </div>
+
+            <button class="btn-primary" onclick="closeProfileModal()">
+                <span>متوجه شدم ✨</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- مودال اختصاصی ۲: ثبت کارت بانکی جدید -->
+    <div class="modal-overlay" id="addCardModal" onclick="closeModalOnBg(event, 'addCardModal')">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>💳</span>
+                    <span>ثبت شماره کارت جدید</span>
+                </div>
+                <button class="modal-close-btn" onclick="closeAddCardModal()">✕</button>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">شماره ۱۶ رقمی کارت بانکی:</label>
+                <input type="tel" id="newCardNumberInput" class="form-control" style="font-family: monospace; direction: ltr; font-size: 1.15rem; letter-spacing: 2px; text-align: center;" placeholder="6037 9911 2233 4455" maxlength="19" oninput="onCardNumberChange(this)">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">نام بانک (شناسایی خودکار):</label>
+                <div style="position: relative;">
+                    <input type="text" id="newCardBankNameInput" class="form-control" placeholder="مثال: بانک ملی یا سامان">
+                    <span id="detectedBankBadge" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 0.76rem; color: var(--gold-primary); font-weight: 800;"></span>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 22px;">
+                <button class="btn-primary" style="flex: 2;" onclick="submitNewCard()">
+                    <span>💾 ثبت و ذخیره کارت</span>
+                </button>
+                <button class="del-btn" style="flex: 1; height: auto; border-radius: var(--radius-md); font-weight: 700; background: rgba(255,255,255,0.06); border-color: var(--border-glass); color: var(--text-sub);" onclick="closeAddCardModal()">
+                    <span>انصراف</span>
+                </button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -1921,50 +2083,142 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             render();
         }
 
-        // افزودن کارت بانکی
-        async function openAddCardModal() {
-            const cardNum = prompt('شماره کارت ۱۶ رقمی خود را وارد کنید:');
-            if (!cardNum) return;
-            const bankName = prompt('نام بانک (اختیاری):') || 'بانک';
+        // مدیریت مودال پروفایل اختصاصی کاربر
+        function openProfileModal() {
+            const data = appState.userData;
+            const user = data?.user || {};
+            
+            const displayName = user.calling_name || user.full_name || 'کاربر گرامی';
+            const username = user.username ? ('@' + user.username) : 'بدون یوزرنیم تلگرام';
+            const uid = user.id || appState.userId || '-';
+            const cardsCount = (data?.cards || []).length;
+            const groupsCount = (data?.groups || []).length;
+
+            document.getElementById('profileModalName').innerText = displayName;
+            document.getElementById('profileModalUsername').innerText = username;
+            document.getElementById('profileModalId').innerText = uid;
+            document.getElementById('profileModalCardsCount').innerText = cardsCount + ' کارت فعال';
+            document.getElementById('profileModalGroupsCount').innerText = groupsCount + ' گروه دورهمی';
+
+            const firstLetter = displayName.trim().charAt(0) || '☕';
+            document.getElementById('profileAvatarIcon').innerText = firstLetter;
+
+            document.getElementById('profileModal').classList.add('active');
+            if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function closeProfileModal() {
+            document.getElementById('profileModal').classList.remove('active');
+        }
+
+        function closeModalOnBg(e, modalId) {
+            if (e.target && e.target.id === modalId) {
+                document.getElementById(modalId).classList.remove('active');
+            }
+        }
+
+        // دیکشنری پیش‌شماره‌های بانکی ایران برای شناسایی خودکار کارت
+        const IRAN_BANK_BINS = {
+            "603799": "بانک ملی",
+            "589210": "بانک سپه",
+            "627648": "بانک صادرات",
+            "627961": "بانک صنعت و معدن",
+            "603770": "بانک کشاورزی",
+            "628023": "بانک مسکن",
+            "627760": "پست بانک",
+            "502908": "بانک توسعه تعاون",
+            "627412": "بانک اقتصاد نوین",
+            "622106": "بانک پارسیان",
+            "502229": "بانک پاسارگاد",
+            "639607": "بانک سرمایه",
+            "636214": "بانک آینده",
+            "627381": "بانک انصار",
+            "610433": "بانک ملت",
+            "627353": "بانک تجارت",
+            "505416": "بانک گردشگری",
+            "505785": "بانک ایران زمین",
+            "639346": "بانک سینا",
+            "585983": "بانک تجارت",
+            "863588": "بانک سامان",
+            "621986": "بانک سامان",
+            "505801": "بانک کوثر",
+            "504706": "بانک شهر",
+            "606373": "بلو بانک (Blu) / مهر ایران",
+            "502938": "بانک دی",
+            "504172": "بانک رسالت",
+            "639599": "بانک قوامین",
+            "636949": "بانک حکمت"
+        };
+
+        // باز و بسته کردن مودال ثبت کارت بانکی
+        function openAddCardModal() {
+            document.getElementById('newCardNumberInput').value = '';
+            document.getElementById('newCardBankNameInput').value = '';
+            document.getElementById('detectedBankBadge').innerText = '';
+            document.getElementById('addCardModal').classList.add('active');
+            if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function closeAddCardModal() {
+            document.getElementById('addCardModal').classList.remove('active');
+        }
+
+        function onCardNumberChange(input) {
+            let digits = input.value.replace(/\D/g, '');
+            if (digits.length > 16) digits = digits.substring(0, 16);
+            
+            // قالب‌بندی ۴ رقم ۴ رقم با فاصله
+            const formatted = digits.replace(/(\d{4})/g, '$1 ').trim();
+            input.value = formatted;
+
+            // تشخیص هوشمند نام بانک
+            if (digits.length >= 6) {
+                const bin = digits.substring(0, 6);
+                const bank = IRAN_BANK_BINS[bin];
+                if (bank) {
+                    const bankInput = document.getElementById('newCardBankNameInput');
+                    bankInput.value = bank;
+                    document.getElementById('detectedBankBadge').innerText = '✓ ' + bank;
+                } else {
+                    document.getElementById('detectedBankBadge').innerText = '';
+                }
+            } else {
+                document.getElementById('detectedBankBadge').innerText = '';
+            }
+        }
+
+        async function submitNewCard() {
+            const raw = document.getElementById('newCardNumberInput').value;
+            const digits = raw.replace(/\D/g, '');
+            const bankName = document.getElementById('newCardBankNameInput').value.trim() || 'بانک';
+
+            if (digits.length !== 16) {
+                showToast('⚠️ شماره کارت باید ۱۶ رقم باشد');
+                return;
+            }
+
             try {
                 const res = await fetch('/api/app/add_card', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         user_id: appState.userId || 1,
-                        card_number: cardNum,
+                        card_number: digits,
                         bank_name: bankName
                     })
                 });
                 const resData = await res.json();
                 if (resData.success) {
+                    closeAddCardModal();
                     triggerConfetti();
-                    showToast('کارت بانکی اضافه شد 💳');
+                    showToast('کارت بانکی با موفقیت ثبت شد 💳✨');
                     await loadData();
                 } else {
                     showToast('خطا: شماره کارت نامعتبر است');
                 }
             } catch (e) {
-                showToast('خطا در ثبت کارت');
+                showToast('خطا در ارتباط با سرور');
             }
-        }
-
-        // سوئیچ حساب کاربری در مرورگر
-        async function promptSwitchUser() {
-            try {
-                const res = await fetch('/api/app/users');
-                const users = await res.json();
-                if (!users || users.length === 0) return;
-                let msg = 'شناسه کاربر خود را انتخاب کنید:\n';
-                users.forEach(u => {
-                    msg += u.id + ': ' + (u.calling_name || u.full_name) + '\n';
-                });
-                const chosen = prompt(msg, appState.userId || users[0].id);
-                if (chosen) {
-                    appState.userId = parseInt(chosen);
-                    await loadData();
-                }
-            } catch (e) {}
         }
 
         // اجرای شروع اولیه
