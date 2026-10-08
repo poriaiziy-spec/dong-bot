@@ -533,8 +533,29 @@ async def test_all_scenarios():
         })
         assert card_post.status == 200
         assert (await card_post.json())["success"] is True
+
+        # ۷. آزمون ثبت غذای دلخواه در گردونه چی بخوریم
+        food_post = await client.post("/api/app/add_food", json={
+            "group_id": t_grp_id,
+            "user_id": user_id,
+            "name": "پاستا پنه آلفردو با فیله مرغ",
+            "category": "cafe",
+            "emoji": "🍝",
+            "description": "پیشنهاد پاستای دورهمی"
+        })
+        assert food_post.status == 200
+        food_json = await food_post.json()
+        assert food_json["success"] is True
+        f_id = food_json["food_id"]
+
+        # حذف غذای دلخواه
+        food_del = await client.post("/api/app/delete_food", json={
+            "food_id": f_id
+        })
+        assert food_del.status == 200
+        assert (await food_del.json())["success"] is True
         
-        print("✅ تمامی روت‌ها و متدهای API مینی‌اپ با موفقیت ۱۰۰٪ پاس شدند.")
+        print("✅ تمامی روت‌ها و متدهای API مینی‌اپ (شامل ثبت غذای دلخواه) با موفقیت ۱۰۰٪ پاس شدند.")
     finally:
         await client.close()
 

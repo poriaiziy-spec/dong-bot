@@ -864,6 +864,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     <button class="segment-btn" onclick="setFoodCategory('fastfood', this)">فست‌فود 🍔</button>
                     <button class="segment-btn" onclick="setFoodCategory('traditional', this)">سنتی 🍢</button>
                     <button class="segment-btn" onclick="setFoodCategory('cafe', this)">کافه ☕</button>
+                    <button class="segment-btn" onclick="setFoodCategory('custom', this)">پیشنهادی ✨</button>
                 </div>
 
                 <div class="food-slot-box" id="foodSlotBox">
@@ -872,9 +873,58 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     <div class="food-category-pill" id="foodDesc">پیشنهاد خوشمزه برای دورهمی شما</div>
                 </div>
 
-                <button class="btn-primary" id="spinFoodBtn" onclick="spinFoodWheel()">
+                <button class="btn-primary" id="spinFoodBtn" onclick="spinFoodWheel()" style="margin-bottom:14px;">
                     <span>🎲 بچرخون و انتخاب کن!</span>
                 </button>
+
+                <!-- بخش افزودن غذای دلخواه جدید به گردونه -->
+                <div style="background:var(--bg-color); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:16px; margin-top:16px; text-align:right;">
+                    <div style="font-size:0.92rem; font-weight:700; margin-bottom:10px; color:var(--accent-amber); display:flex; align-items:center; gap:6px;">
+                        <span>➕ افزودن غذای دلخواه به گزینه‌ها:</span>
+                    </div>
+                    <div class="form-group" style="margin-bottom:10px;">
+                        <input type="text" id="customFoodInput" class="form-control" placeholder="نام غذا (مثلاً: پاستا آلفردو، ساندویچ بندری، دیزی...)">
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                        <div>
+                            <label class="form-label" style="font-size:0.75rem;">دسته‌بندی:</label>
+                            <select id="customFoodCatSelect" class="form-control" style="padding:8px 10px; font-size:0.85rem;">
+                                <option value="fastfood">فست‌فود 🍔</option>
+                                <option value="traditional">سنتی و خوراک 🍢</option>
+                                <option value="cafe">کافه و دسر ☕</option>
+                                <option value="custom">دست‌ساز و خودمونی 🍳</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:0.75rem;">ایموجی یا آیکون:</label>
+                            <select id="customFoodEmojiSelect" class="form-control" style="padding:8px 10px; font-size:0.85rem;">
+                                <option value="🍕">🍕 پیتزا</option>
+                                <option value="🍔">🍔 برگر</option>
+                                <option value="🍢">🍢 کباب</option>
+                                <option value="🍲">🍲 خورشت / پلو</option>
+                                <option value="🥪">🥪 ساندویچ</option>
+                                <option value="🍝">🍝 پاستا</option>
+                                <option value="🍗">🍗 سوخاری</option>
+                                <option value="☕">☕ کافه / دسر</option>
+                                <option value="🍳">🍳 خودمونی</option>
+                                <option value="🍽️">🍽️ خوراک</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn-primary" style="padding:10px; font-size:0.9rem;" onclick="submitNewCustomFood()">
+                        <span>➕ ثبت و اضافه به گردونه</span>
+                    </button>
+
+                    <!-- لیست غذاهای اضافه شده -->
+                    <div style="margin-top:16px;">
+                        <div style="font-size:0.82rem; font-weight:700; color:var(--text-secondary); margin-bottom:8px;">
+                            📋 غذاهای اضافه شده توسط شما و گروه:
+                        </div>
+                        <div id="customFoodsListContainer">
+                            <!-- به صورت پویا پر می‌شود -->
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -1000,6 +1050,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             if (tabId === 'groups') renderGroupsTab();
             if (tabId === 'shopping') renderShoppingList();
             if (tabId === 'add-expense') prepareExpenseForm();
+            if (tabId === 'food') renderCustomFoodsList();
         }
 
         // بارگذاری داده‌ها از بک‌اند
@@ -1023,6 +1074,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 if (!res.ok) throw new Error('خطا در دریافت اطلاعات');
                 const data = await res.json();
                 appState.userData = data;
+                appState.customFoods = data.custom_foods || [];
 
                 if (data.user) {
                     appState.userId = data.user.id;
@@ -1031,6 +1083,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
 
                 // بروزرسانی داشبورد
                 renderDashboard(data);
+                renderCustomFoodsList();
 
                 // مقداردهی اولیه گروه
                 if (data.groups && data.groups.length > 0) {
@@ -1557,11 +1610,105 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             if (btn) btn.classList.add('active');
         }
 
-        function spinFoodWheel() {
-            let pool = FOOD_DATABASE;
-            if (appState.selectedFoodCategory !== 'all') {
-                pool = FOOD_DATABASE.filter(f => f.cat === appState.selectedFoodCategory);
+        function renderCustomFoodsList() {
+            const container = document.getElementById('customFoodsListContainer');
+            if (!container) return;
+            const list = appState.customFoods || [];
+            if (list.length === 0) {
+                container.innerHTML = '<div style="font-size:0.75rem; color:var(--text-muted); text-align:center; padding:8px;">هنوز غذای دلخواهی اضافه نشده است.</div>';
+                return;
             }
+            let html = '<div style="display:flex; flex-direction:column; gap:6px;">';
+            list.forEach(f => {
+                html += `
+                    <div class="item-row" style="padding:8px 12px; margin-bottom:0; justify-content:space-between;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:1.25rem;">${f.emoji || '🍽️'}</span>
+                            <div style="text-align:right;">
+                                <div style="font-size:0.88rem; font-weight:700;">${f.name}</div>
+                                <div style="font-size:0.72rem; color:var(--text-secondary);">${f.description || 'پیشنهاد اختصاصی شما ✨'}</div>
+                            </div>
+                        </div>
+                        <button class="del-btn" style="width:26px; height:26px; font-size:0.75rem;" onclick="deleteCustomFood(${f.id})">✕</button>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        async function submitNewCustomFood() {
+            const name = document.getElementById('customFoodInput').value.trim();
+            const cat = document.getElementById('customFoodCatSelect').value;
+            const emoji = document.getElementById('customFoodEmojiSelect').value;
+
+            if (!name) {
+                showToast('لطفاً نام غذا را بنویسید');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/app/add_food', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        group_id: appState.currentGroupId,
+                        user_id: appState.userId,
+                        name: name,
+                        category: cat,
+                        emoji: emoji,
+                        description: 'پیشنهاد دلخواه دورهمی شما ✨'
+                    })
+                });
+                const resData = await res.json();
+                if (resData.success) {
+                    showToast('غذای جدید به گردونه اضافه شد 😋✨');
+                    document.getElementById('customFoodInput').value = '';
+                    await loadData();
+                    renderCustomFoodsList();
+                } else {
+                    showToast('خطا در ثبت غذا');
+                }
+            } catch(e) {
+                showToast('خطا در ارتباط با سرور');
+            }
+        }
+
+        async function deleteCustomFood(id) {
+            try {
+                const res = await fetch('/api/app/delete_food', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ food_id: id })
+                });
+                const resData = await res.json();
+                if (resData.success) {
+                    showToast('غذا از گردونه حذف شد');
+                    await loadData();
+                    renderCustomFoodsList();
+                }
+            } catch (e) {
+                showToast('خطا در حذف غذا');
+            }
+        }
+
+        function spinFoodWheel() {
+            let customPool = (appState.customFoods || []).map(f => ({
+                name: f.name,
+                emoji: f.emoji || '🍽️',
+                cat: f.category || 'all',
+                desc: f.description || 'پیشنهاد اختصاصی شما ✨'
+            }));
+
+            let pool = [...FOOD_DATABASE, ...customPool];
+            if (appState.selectedFoodCategory !== 'all') {
+                if (appState.selectedFoodCategory === 'custom') {
+                    pool = customPool.length > 0 ? customPool : pool;
+                } else {
+                    pool = pool.filter(f => f.cat === appState.selectedFoodCategory || (f.cat === 'custom' && appState.selectedFoodCategory === 'custom'));
+                }
+            }
+            if (pool.length === 0) pool = [...FOOD_DATABASE, ...customPool];
             if (pool.length === 0) pool = FOOD_DATABASE;
 
             const btn = document.getElementById('spinFoodBtn');
@@ -1745,11 +1892,13 @@ async def api_user_data_handler(request: web.Request) -> web.Response:
 
         import random
         daily_quote = random.choice(CAFE_MOTIVATIONAL_QUOTES)
+        custom_foods = await db.get_custom_foods()
 
         data = {
             "user": user,
             "cards": cards,
             "groups": groups_payload,
+            "custom_foods": custom_foods,
             "overall_stats": {
                 "total_creditor": total_creditor,
                 "total_debtor": total_debtor,
@@ -1837,6 +1986,38 @@ async def api_add_card_handler(request: web.Request) -> web.Response:
         return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
 
 
+async def api_add_food_handler(request: web.Request) -> web.Response:
+    """افزودن غذای دلخواه جدید به گردونه از طریق مینی‌اپ"""
+    try:
+        body = await request.json()
+        group_id = int(body["group_id"]) if body.get("group_id") else None
+        user_id = int(body["user_id"]) if body.get("user_id") else None
+        name = str(body["name"]).strip()
+        category = str(body.get("category") or "all")
+        emoji = str(body.get("emoji") or "🍽️")
+        description = str(body.get("description") or "پیشنهاد دلخواه دورهمی شما ✨")
+
+        if not name:
+            return web.json_response({"success": False, "error": "نام غذا نمی‌تواند خالی باشد"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+        food_id = await db.add_custom_food(group_id, user_id, name, category, emoji, description)
+        return web.json_response({"success": True, "food_id": food_id}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"api_add_food_handler error: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
+async def api_delete_food_handler(request: web.Request) -> web.Response:
+    """حذف غذای سفارشی از طریق مینی‌اپ"""
+    try:
+        body = await request.json()
+        food_id = int(body["food_id"])
+        res = await db.delete_custom_food(food_id)
+        return web.json_response({"success": bool(res)}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
 def setup_webapp_routes(app: web.Application):
     """ثبت تمام مسیرهای مربوط به مینی‌اپ در اپلیکیشن aiohttp"""
     app.router.add_get("/app", miniapp_page_handler)
@@ -1846,3 +2027,5 @@ def setup_webapp_routes(app: web.Application):
     app.router.add_post("/api/app/add_shopping_item", api_add_shopping_item_handler)
     app.router.add_post("/api/app/delete_shopping_item", api_delete_shopping_item_handler)
     app.router.add_post("/api/app/add_card", api_add_card_handler)
+    app.router.add_post("/api/app/add_food", api_add_food_handler)
+    app.router.add_post("/api/app/delete_food", api_delete_food_handler)

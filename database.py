@@ -153,6 +153,23 @@ async def init_db():
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_shopping_items_group ON shopping_items(group_id);")
 
+        # جدول غذاهای اختصاصی گردونه چی بخوریم
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS custom_foods (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER,
+                user_id INTEGER,
+                name TEXT NOT NULL,
+                category TEXT DEFAULT 'all',
+                emoji TEXT DEFAULT '🍽️',
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_custom_foods_group ON custom_foods(group_id);")
+
         await db.commit()
     
     # بازیابی خودکار داده‌ها در سرورهای ابری
@@ -911,5 +928,47 @@ async def clear_group_shopping_items(group_id: int) -> int:
         await db.commit()
         schedule_cloud_backup()
         return cursor.rowcount
+
+
+async def add_custom_food(group_id: int | None, user_id: int | None, name: str, category: str = "all", emoji: str = "🍽️", description: str = "") -> int:
+    """افزودن غذای دلخواه جدید به گردونه چی بخوریم"""
+    clean_name = str(name).strip()
+    clean_desc = str(description).strip()
+    clean_cat = category if category in ["fastfood", "traditional", "cafe", "all"] else "all"
+    clean_emoji = emoji or "🍽️"
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("""
+            INSERT INTO custom_foods (group_id, user_id, name, category, emoji, description)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (group_id, user_id, clean_name, clean_cat, clean_emoji, clean_desc))
+        food_id = cursor.lastrowid
+        await db.commit()
+        schedule_cloud_backup()
+        return food_id
+
+
+async def get_custom_foods(group_id: int | None = None) -> list[dict]:
+    """دریافت غذاهای سفارشی ثبت‌شده (برای یک گروه خاص یا سراسری)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if group_id:
+            query = "SELECT * FROM custom_foods WHERE group_id = ? OR group_id IS NULL ORDER BY id DESC"
+            params = (group_id,)
+        else:
+            query = "SELECT * FROM custom_foods ORDER BY id DESC"
+            params = ()
+        async with db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def delete_custom_food(food_id: int) -> bool:
+    """حذف یک غذای سفارشی از گردونه"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("DELETE FROM custom_foods WHERE id = ?", (food_id,))
+        await db.commit()
+        schedule_cloud_backup()
+        return cursor.rowcount > 0
 
 
