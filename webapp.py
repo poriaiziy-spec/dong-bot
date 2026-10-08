@@ -1153,23 +1153,36 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             const settlements = currentGroup.balances?.settlements || [];
             if (settlements.length > 0) {
                 settlements.forEach(s => {
+                    const fromUser = s.from_user || {};
+                    const toUser = s.to_user || {};
+                    const fromName = s.from_name || fromUser.display_name || fromUser.nickname || fromUser.calling_name || fromUser.full_name || 'عضو';
+                    const toName = s.to_name || toUser.display_name || toUser.nickname || toUser.calling_name || toUser.full_name || 'عضو';
                     const toUserCard = s.to_card;
+                    const toUserCardFormatted = s.to_card_formatted || (toUserCard ? toUserCard.replace(/(\d{4})/g, '$1 ').trim() : '');
+                    
                     groupHtml += `
-                        <div class="item-row">
-                            <div class="item-info">
-                                <div class="item-title">
-                                    <span style="color:var(--accent-rose);">${s.from_name}</span>
-                                    <span> ➔ بدهد به </span>
-                                    <span style="color:var(--accent-emerald);">${s.to_name}</span>
+                        <div class="item-row" style="flex-direction:column; align-items:stretch; gap:10px; padding:14px; margin-bottom:10px;">
+                            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                                <div style="font-size:0.95rem; font-weight:700;">
+                                    <span style="color:var(--accent-rose);">${fromName}</span>
+                                    <span style="color:var(--text-secondary); font-size:0.82rem; margin:0 6px;">بدهد به ➔</span>
+                                    <span style="color:var(--accent-emerald);">${toName}</span>
                                 </div>
-                                <div class="item-sub">
-                                    ${toUserCard ? 'شماره کارت: ' + toUserCard : 'کارت بانکی ثبت نشده'}
+                                <div class="item-price" style="font-size:1.05rem;">${formatToman(s.amount)}</div>
+                            </div>
+                            ${toUserCard ? `
+                                <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(15,23,42,0.6); padding:8px 12px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
+                                    <div style="font-size:0.78rem; color:var(--text-secondary); display:flex; align-items:center; gap:6px;">
+                                        <span>💳 شماره کارت:</span>
+                                        <span style="font-family:monospace; direction:ltr; unicode-bidi:embed; font-size:0.92rem; color:var(--text-primary); font-weight:700; letter-spacing:1px;">${toUserCardFormatted}</span>
+                                    </div>
+                                    <button class="copy-btn" onclick="copyText('${toUserCard}', 'شماره کارت')">کپی کارت</button>
                                 </div>
-                            </div>
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <div class="item-price">${formatToman(s.amount)}</div>
-                                ${toUserCard ? `<button class="copy-btn" onclick="copyText('${toUserCard}', 'شماره کارت')">کپی کارت</button>` : ''}
-                            </div>
+                            ` : `
+                                <div style="font-size:0.75rem; color:var(--text-muted);">
+                                    (شماره کارت طلبکار هنوز ثبت نشده است)
+                                </div>
+                            `}
                         </div>
                     `;
                 });
@@ -1688,12 +1701,28 @@ async def api_user_data_handler(request: web.Request) -> web.Response:
             balances = calculate_group_balances(members, active_expenses)
             shopping_items = await db.get_group_shopping_items(gid)
 
-            # افزودن کارت طلبکار به فرمول تسویه
+            # افزودن کارت طلبکار به فرمول تسویه و تضمین نام‌های خوانا
             for s in balances.get("settlements", []):
-                to_uid = s.get("to_id") or s.get("to_user", {}).get("id")
+                from_u = s.get("from_user") or {}
+                to_u = s.get("to_user") or {}
+                if not s.get("from_name"):
+                    s["from_name"] = from_u.get("display_name") or from_u.get("nickname") or from_u.get("calling_name") or from_u.get("full_name") or "عضو"
+                if not s.get("to_name"):
+                    s["to_name"] = to_u.get("display_name") or to_u.get("nickname") or to_u.get("calling_name") or to_u.get("full_name") or "عضو"
+
+                to_uid = to_u.get("id") or s.get("to_id")
                 if to_uid:
                     s_card = await db.get_user_card(to_uid)
-                    s["to_card"] = s_card.get("card_number") if s_card else None
+                    raw_card = s_card.get("card_number") if s_card else None
+                    s["to_card"] = raw_card
+                    if raw_card:
+                        digits = "".join(filter(str.isdigit, str(raw_card)))
+                        if len(digits) == 16:
+                            s["to_card_formatted"] = f"{digits[:4]} {digits[4:8]} {digits[8:12]} {digits[12:]}"
+                        else:
+                            s["to_card_formatted"] = raw_card
+                    else:
+                        s["to_card_formatted"] = None
 
             # استخراج تراز این کاربر در گروه
             user_stat = next((m for m in balances.get("member_stats", []) if m["user"]["id"] == user_id), None)

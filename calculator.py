@@ -81,9 +81,15 @@ def calculate_group_balances(members: list[dict], expenses: list[dict]) -> dict[
         transfer_amount = min(debtor["amount"], creditor["amount"])
         
         if transfer_amount > 0:
+            d_u = debtor["user"]
+            c_u = creditor["user"]
+            f_name = d_u.get("display_name") or d_u.get("nickname") or d_u.get("calling_name") or d_u.get("full_name") or "عضو"
+            t_name = c_u.get("display_name") or c_u.get("nickname") or c_u.get("calling_name") or c_u.get("full_name") or "عضو"
             settlements.append({
-                "from_user": debtor["user"],
-                "to_user": creditor["user"],
+                "from_user": d_u,
+                "to_user": c_u,
+                "from_name": f_name,
+                "to_name": t_name,
                 "amount": int(round(transfer_amount))
             })
             
