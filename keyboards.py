@@ -397,6 +397,18 @@ def cancel_keyboard(group_id: int | None = None) -> InlineKeyboardMarkup:
     ])
 
 
+def expense_amount_choice_keyboard(group_id: int) -> InlineKeyboardMarkup:
+    """کیبورد مرحله ورود مبلغ هزینه با گزینه ورود مرحله‌ای قیمت واحد و تعداد"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔢 ورود مرحله‌ای (قیمت واحد + تعداد)", callback_data=f"exp:mode_qty:{group_id}")
+        ],
+        [
+            InlineKeyboardButton(text="❌ انصراف", callback_data=f"grp:sec_exp:{group_id}")
+        ]
+    ])
+
+
 def food_picker_keyboard(group_id: int, item_count: int) -> InlineKeyboardMarkup:
     """کیبورد گردونه انتخاب غذا در مرحله دریافت گزینه‌ها"""
     keyboard = []

@@ -17,7 +17,7 @@ if sys.platform.startswith("win"):
 import database as db
 import keyboards as kb
 from calculator import calculate_group_balances
-from helpers import clean_amount_input, format_amount, safe, mention_user, parse_quantity, format_quantity
+from helpers import clean_amount_input, format_amount, safe, mention_user, parse_quantity, format_quantity, parse_amount_or_quantity_expression
 from bank_utils import clean_card_input, format_card_number, detect_bank_name
 import tones
 from random_names import FUNNY_GROUP_NAMES, get_random_group_name, get_random_member_nickname
@@ -64,7 +64,25 @@ async def test_all_scenarios():
     assert parse_quantity("سلام") is None
     assert format_quantity(4.0) == "4 عدد"
     assert format_quantity(1.5) == "1.5"
-    print("✅ تمامی تست‌های ورودی مبلغ و تعداد اقلام لیست خرید پاس شدند.")
+
+    # تست فرمول ترکیبی ضرب قیمت واحد در تعداد برای ثبت سریع هزینه
+    exp1_tot, exp1_dt = parse_amount_or_quantity_expression("35000 * 4")
+    assert exp1_tot == 140000 and exp1_dt["unit_price"] == 35000 and exp1_dt["quantity"] == 4.0
+    exp2_tot, _ = parse_amount_or_quantity_expression("۳۵۰۰۰ × ۴")
+    assert exp2_tot == 140000
+    exp3_tot, _ = parse_amount_or_quantity_expression("35k * 4")
+    assert exp3_tot == 140000
+    exp4_tot, _ = parse_amount_or_quantity_expression("۴ تا ۳۵ هزار")
+    assert exp4_tot == 140000
+    exp5_tot, _ = parse_amount_or_quantity_expression("500000 ضربدر 2")
+    assert exp5_tot == 1000000
+    exp6_tot, _ = parse_amount_or_quantity_expression("35000 4")
+    assert exp6_tot == 140000
+    exp7_tot, exp7_dt = parse_amount_or_quantity_expression("140000")
+    assert exp7_tot == 140000 and exp7_dt is None
+    assert parse_amount_or_quantity_expression("-5000")[0] is None
+    assert parse_amount_or_quantity_expression(None)[0] is None
+    print("✅ تمامی تست‌های ورودی مبلغ، تعداد و فرمول‌های ضرب فی در تعداد پاس شدند.")
 
     # -------------------------------------------------------------
     # سناریو ۲: تست شماره کارت بانکی در شرایط غیرعادی
@@ -382,7 +400,8 @@ async def test_all_scenarios():
         kb.shopping_list_keyboard(BIG_GRP, has_items=False),
         kb.shopping_list_keyboard(BIG_GRP, has_items=True),
         kb.shopping_del_items_keyboard([{"id": BIG_EXP, "item_name": "چیپس مخصوص", "total_price": BIG_AMT}], BIG_GRP),
-        kb.shopping_clear_confirm_keyboard(BIG_GRP)
+        kb.shopping_clear_confirm_keyboard(BIG_GRP),
+        kb.expense_amount_choice_keyboard(BIG_GRP)
     ]
 
     # همچنین کلیدهای داینامیک درون reports.py و motivational.py

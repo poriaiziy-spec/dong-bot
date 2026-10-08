@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 import database as db
 import keyboards as kb
 from states import ExpenseCreationStates, ExpenseEditStates
-from helpers import clean_amount_input, format_amount, safe
+from helpers import clean_amount_input, format_amount, safe, parse_amount_or_quantity_expression, parse_quantity, format_quantity
 from tones import (
     msg_expense_title_prompt,
     msg_expense_amount_prompt,
@@ -52,8 +52,125 @@ async def handle_expense_title(message: Message, state: FSMContext):
     
     await db.cleanup_chat_history(message.bot, message.from_user.id)
     text = msg_expense_amount_prompt(tone, title)
-    sent = await message.answer(text, parse_mode="HTML", reply_markup=kb.cancel_keyboard(group_id))
+    sent = await message.answer(text, parse_mode="HTML", reply_markup=kb.expense_amount_choice_keyboard(group_id))
     await db.record_chat_message(message.from_user.id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("exp:mode_qty:"))
+async def handle_start_unit_price_mode(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    group_id = int(callback.data.split(":")[2])
+    data = await state.get_data()
+    title = data.get("title", "هزینه")
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+
+    await state.set_state(ExpenseCreationStates.waiting_for_unit_price)
+
+    text = (
+        f"🏷️ شرح هزینه: <b>«{safe(title)}»</b>\n\n"
+        f"💵 <b>قیمت واحد (فی هر یک عدد)</b> چقدره {safe(calling_name)} قشنگم؟\n"
+        "لطفاً مبلغ رو به <b>تومان</b> برام بفرست:\n"
+        "<i>(مثلاً: <code>35000</code> یا <code>۳۵ هزار</code> یا <code>35k</code>)</i>"
+    )
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ انصراف", callback_data=f"grp:sec_exp:{group_id}")]
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+
+
+@router.message(ExpenseCreationStates.waiting_for_unit_price)
+async def handle_expense_unit_price(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    calling_name = await db.get_user_calling_name(user_id) or "جان دلم"
+    data = await state.get_data()
+    group_id = data.get("group_id")
+    title = data.get("title", "هزینه")
+
+    unit_price = clean_amount_input(message.text)
+    if not unit_price or unit_price <= 0:
+        sent = await message.answer(
+            f"⚠️ مبلغ قیمت واحد نامعتبر است {safe(calling_name)} جانم! لطفاً عددی به تومان بفرست (مثلاً: <code>35000</code> یا <code>۳۵ هزار</code>):",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ انصراف", callback_data=f"grp:sec_exp:{group_id}")]
+            ])
+        )
+        await db.record_chat_message(user_id, sent.message_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        return
+
+    await state.update_data(unit_price=unit_price)
+    await state.set_state(ExpenseCreationStates.waiting_for_quantity)
+    await db.cleanup_chat_history(message.bot, user_id)
+
+    prompt_text = (
+        f"🏷️ شرح هزینه: <b>«{safe(title)}»</b>\n"
+        f"💵 قیمت واحد: <b>{format_amount(unit_price)}</b>\n\n"
+        f"🔢 <b>تعداد یا مقدارش</b> چنده {safe(calling_name)} قشنگم؟\n"
+        "<i>(مثلاً: <code>4</code> یا <code>۲</code> یا حتی اعشاری مثل <code>1.5</code>)</i>"
+    )
+    sent = await message.answer(
+        prompt_text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ انصراف", callback_data=f"grp:sec_exp:{group_id}")]
+        ])
+    )
+    await db.record_chat_message(user_id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+
+@router.message(ExpenseCreationStates.waiting_for_quantity)
+async def handle_expense_quantity(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    calling_name = await db.get_user_calling_name(user_id) or "جان دلم"
+    data = await state.get_data()
+    group_id = data.get("group_id")
+    title = data.get("title", "هزینه")
+    unit_price = data.get("unit_price", 0)
+    tone = data.get("tone") or (await db.get_group_tone(group_id) if group_id else "friendly")
+
+    qty = parse_quantity(message.text)
+    if not qty or qty <= 0:
+        sent = await message.answer(
+            f"⚠️ مقدار یا تعداد نامعتبر است {safe(calling_name)} قشنگم! لطفاً عددی مانند <code>4</code> یا <code>1.5</code> بفرست:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ انصراف", callback_data=f"grp:sec_exp:{group_id}")]
+            ])
+        )
+        await db.record_chat_message(user_id, sent.message_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        return
+
+    total_amount = int(round(unit_price * qty))
+    calc_desc = f"{format_amount(unit_price)} × {format_quantity(qty)}"
+    await state.update_data(amount=total_amount)
+    await state.set_state(ExpenseCreationStates.waiting_for_payer)
+
+    members = await db.get_group_members(group_id)
+    await db.cleanup_chat_history(message.bot, user_id)
+
+    prompt = msg_expense_payer_prompt(tone, title, f"{format_amount(total_amount)} ({calc_desc})")
+    sent = await message.answer(
+        prompt,
+        parse_mode="HTML",
+        reply_markup=kb.payer_select_keyboard(group_id, members, user_id)
+    )
+    await db.record_chat_message(user_id, sent.message_id)
     try:
         await message.delete()
     except Exception:
@@ -62,31 +179,43 @@ async def handle_expense_title(message: Message, state: FSMContext):
 
 @router.message(ExpenseCreationStates.waiting_for_amount)
 async def handle_expense_amount(message: Message, state: FSMContext):
-    amount = clean_amount_input(message.text or "")
-    calling_name = await db.get_user_calling_name(message.from_user.id) or "عزیز دلم"
+    user_id = message.from_user.id
+    calling_name = await db.get_user_calling_name(user_id) or "عزیز دلم"
+    data = await state.get_data()
+    group_id = data.get("group_id")
+    title = data.get("title", "هزینه")
+    tone = data.get("tone") or (await db.get_group_tone(group_id) if group_id else "friendly")
+
+    amount, calc_detail = parse_amount_or_quantity_expression(message.text)
     if not amount or amount <= 0:
-        await message.answer(
-            f"⚠️ مبلغ نامعتبره {safe(calling_name)} قشنگم! لطفاً عدد رو به تومان برام بفرست (مثلاً: <code>250000</code> یا <code>۲۵۰ هزار</code>):",
-            parse_mode="HTML"
+        sent = await message.answer(
+            f"⚠️ مبلغ یا فرمول نامعتبره {safe(calling_name)} قشنگم! لطفاً مبلغ کل (مثلاً: <code>250000</code>) یا ضرب قیمت واحد در تعداد (مثلاً: <code>35000 * 4</code> یا <code>۴ تا ۳۵ هزار</code>) رو برام بفرست:",
+            parse_mode="HTML",
+            reply_markup=kb.expense_amount_choice_keyboard(group_id)
         )
+        await db.record_chat_message(user_id, sent.message_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
         return
 
+    calc_desc = ""
+    if calc_detail:
+        calc_desc = f" ({format_amount(calc_detail['unit_price'])} × {format_quantity(calc_detail['quantity'])})"
+
     await state.update_data(amount=amount)
-    data = await state.get_data()
-    group_id = data["group_id"]
-    tone = data.get("tone") or (await db.get_group_tone(group_id) if group_id else "friendly")
-    
     members = await db.get_group_members(group_id)
     await state.set_state(ExpenseCreationStates.waiting_for_payer)
-    
-    await db.cleanup_chat_history(message.bot, message.from_user.id)
-    text = msg_expense_payer_prompt(tone, data["title"], format_amount(amount))
+
+    await db.cleanup_chat_history(message.bot, user_id)
+    text = msg_expense_payer_prompt(tone, title, f"{format_amount(amount)}{calc_desc}")
     sent = await message.answer(
         text,
         parse_mode="HTML",
-        reply_markup=kb.payer_select_keyboard(group_id, members, message.from_user.id)
+        reply_markup=kb.payer_select_keyboard(group_id, members, user_id)
     )
-    await db.record_chat_message(message.from_user.id, sent.message_id)
+    await db.record_chat_message(user_id, sent.message_id)
     try:
         await message.delete()
     except Exception:
@@ -358,10 +487,10 @@ async def handle_expense_new_amount_input(message: Message, state: FSMContext):
         await db.record_chat_message(chat_id, sent.message_id)
         return
         
-    amount = clean_amount_input(message.text or "")
+    amount, _ = parse_amount_or_quantity_expression(message.text or "")
     if not amount or amount <= 0:
         sent = await message.answer(
-            f"⚠️ مبلغ نامعتبره {safe(calling_name)} قشنگم! لطفاً مبلغ جدید رو به عدد یا با ضریب تومان بفرست (مثلاً: <code>250000</code> یا <code>۲۵۰ هزار</code>):",
+            f"⚠️ مبلغ یا فرمول نامعتبره {safe(calling_name)} قشنگم! لطفاً مبلغ جدید رو به عدد (مثلاً: <code>250000</code>) یا ضرب فی در تعداد (مثلاً: <code>35000 * 4</code>) بفرست:",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="❌ انصراف", callback_data=f"exp:view:{exp_id}:{group_id}")]

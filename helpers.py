@@ -124,3 +124,72 @@ def format_quantity(qty: float) -> str:
     if qty.is_integer():
         return f"{int(qty)} عدد"
     return f"{qty:g}"
+
+
+def parse_amount_or_quantity_expression(text: str | None) -> tuple[int | None, dict | None]:
+    """
+    تحلیل ورودی مبلغ، با پشتیبانی از:
+    ۱. مبالغ ساده (مثل 140000 یا ۱۴۰ هزار)
+    ۲. فرمول ضرب قیمت واحد در تعداد (مثل 35000 * 4 یا ۳۵۰۰۰ × ۴ یا 35k * 4 یا ۴ تا ۳۵ هزار یا 35000 ضربدر 4 یا 35000 4)
+    
+    خروجی: (total_amount, detail_dict)
+    detail_dict = {"unit_price": int, "quantity": float, "total": int} یا None اگر مبلغ ساده باشد.
+    """
+    if not text:
+        return None, None
+        
+    raw = str(text).strip()
+    if raw.startswith("-") or "منفی" in raw:
+        return None, None
+
+    # بررسی جداکننده‌های ضرب و تعداد
+    patterns = [
+        r"\s*[\*×xX]\s*",
+        r"\s+ضربدر\s+",
+        r"\s+ضرب\s+در\s+",
+        r"\s+تا\s+",
+        r"\s+عدد\s+",
+        r"\s+دونه\s+"
+    ]
+    
+    for pat in patterns:
+        parts = re.split(pat, raw, maxsplit=1)
+        if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+            p1, p2 = parts[0].strip(), parts[1].strip()
+            
+            # حالت ۱: p1 قیمت واحد و p2 تعداد
+            u1 = clean_amount_input(p1)
+            q2 = parse_quantity(p2)
+            if u1 and q2 and u1 > 0 and q2 > 0:
+                tot = int(round(u1 * q2))
+                return tot, {"unit_price": u1, "quantity": q2, "total": tot}
+                
+            # حالت ۲: p1 تعداد و p2 قیمت واحد (مثل: ۴ تا ۳۵ هزار)
+            q1 = parse_quantity(p1)
+            u2 = clean_amount_input(p2)
+            if q1 and u2 and q1 > 0 and u2 > 0:
+                tot = int(round(u2 * q1))
+                return tot, {"unit_price": u2, "quantity": q1, "total": tot}
+
+    # بررسی ۲ بخش با فاصله (مثل: "35000 4" یا "4 35000")
+    space_parts = raw.split()
+    if len(space_parts) == 2:
+        p1, p2 = space_parts[0], space_parts[1]
+        u1 = clean_amount_input(p1)
+        q2 = parse_quantity(p2)
+        if u1 and q2 and u1 > 0 and q2 > 0:
+            tot = int(round(u1 * q2))
+            return tot, {"unit_price": u1, "quantity": q2, "total": tot}
+
+        q1 = parse_quantity(p1)
+        u2 = clean_amount_input(p2)
+        if q1 and u2 and q1 > 0 and u2 > 0:
+            tot = int(round(u2 * q1))
+            return tot, {"unit_price": u2, "quantity": q1, "total": tot}
+
+    # در غیر این صورت به عنوان مبلغ معمولی تمیزکاری شود
+    simple_val = clean_amount_input(raw)
+    if simple_val and simple_val > 0:
+        return simple_val, None
+
+    return None, None
