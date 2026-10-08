@@ -12,40 +12,50 @@ from helpers import format_amount
 
 logger = logging.getLogger(__name__)
 
-# قالب کامل و مدرن مینی‌اپ تلگرام (Single Page Application)
+# ===========================================================================
+# قالب اولترا-مدرن، لوکس و حرفه‌ای مینی‌اپ تلگرام (Single Page Application)
+# ===========================================================================
 MINI_APP_HTML = r"""<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>کافه دنگ ☕ | مینی‌اپ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>کافه دنگ ☕ | مینی‌اپ اختصاصی</title>
     <!-- تلگرام وب‌اپ SDK رسمی -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0f172a;
-            --surface-color: #1e293b;
-            --surface-light: #283548;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
+            --bg-base: #080c14;
+            --bg-card: rgba(18, 24, 38, 0.78);
+            --bg-card-hover: rgba(26, 35, 54, 0.85);
+            --bg-inner: rgba(10, 15, 26, 0.7);
+            --border-glass: rgba(255, 255, 255, 0.08);
+            --border-glass-active: rgba(245, 158, 11, 0.4);
+            
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
             --text-muted: #64748b;
-            --accent-amber: #f59e0b;
-            --accent-amber-glow: rgba(245, 158, 11, 0.2);
-            --accent-emerald: #10b981;
-            --accent-emerald-glow: rgba(16, 185, 129, 0.2);
-            --accent-rose: #f43f5e;
-            --accent-rose-glow: rgba(244, 63, 94, 0.2);
-            --accent-sky: #38bdf8;
-            --border-color: #334155;
-            --radius-sm: 8px;
-            --radius-md: 14px;
-            --radius-lg: 20px;
+            
+            --gold-primary: #f59e0b;
+            --gold-secondary: #d97706;
+            --gold-glow: rgba(245, 158, 11, 0.28);
+            
+            --emerald-main: #10b981;
+            --emerald-glow: rgba(16, 185, 129, 0.22);
+            
+            --rose-main: #f43f5e;
+            --rose-glow: rgba(244, 63, 94, 0.22);
+            
+            --sky-main: #38bdf8;
+            --radius-sm: 10px;
+            --radius-md: 16px;
+            --radius-lg: 24px;
             --radius-full: 9999px;
             --font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            --bottom-nav-height: 68px;
+            --dock-height: 70px;
         }
 
         * {
@@ -57,13 +67,29 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
 
         body {
             font-family: var(--font-family);
-            background-color: var(--bg-color);
-            color: var(--text-primary);
+            background-color: var(--bg-base);
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(245, 158, 11, 0.09) 0%, transparent 45%),
+                radial-gradient(circle at 85% 65%, rgba(16, 185, 129, 0.07) 0%, transparent 45%),
+                radial-gradient(circle at 50% 95%, rgba(56, 189, 248, 0.06) 0%, transparent 40%);
+            background-attachment: fixed;
+            color: var(--text-main);
             line-height: 1.6;
             min-height: 100vh;
-            padding-bottom: calc(var(--bottom-nav-height) + 24px);
+            padding-bottom: calc(var(--dock-height) + 36px);
             overflow-x: hidden;
             user-select: none;
+        }
+
+        /* کانواس جشن و افکت‌های تعاملی */
+        #confettiCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 999;
         }
 
         /* هدر اپلیکیشن */
@@ -71,11 +97,11 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             position: sticky;
             top: 0;
             z-index: 50;
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border-bottom: 1px solid var(--border-color);
-            padding: 12px 16px;
+            background: rgba(8, 12, 20, 0.82);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-bottom: 1px solid var(--border-glass);
+            padding: 12px 18px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -84,58 +110,79 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
         .brand-box {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
 
-        .brand-icon {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #f59e0b, #d97706);
+        .brand-icon-box {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, #f59e0b 0%, #b45309 100%);
             border-radius: var(--radius-md);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.3rem;
-            box-shadow: 0 4px 12px var(--accent-amber-glow);
+            font-size: 1.4rem;
+            box-shadow: 0 8px 20px var(--gold-glow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .brand-icon-box::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 50%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.25) 0%, transparent 100%);
         }
 
         .brand-title {
-            font-size: 1.05rem;
-            font-weight: 800;
-            color: var(--text-primary);
+            font-size: 1.15rem;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 0%, #fef08a 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
 
         .brand-subtitle {
             font-size: 0.72rem;
-            color: var(--accent-amber);
-            font-weight: 500;
+            color: var(--gold-primary);
+            font-weight: 600;
         }
 
         .user-pill {
             display: flex;
             align-items: center;
-            gap: 8px;
-            background: var(--surface-color);
-            border: 1px solid var(--border-color);
-            padding: 6px 12px;
+            gap: 9px;
+            background: rgba(22, 30, 49, 0.7);
+            border: 1px solid var(--border-glass);
+            padding: 7px 14px;
             border-radius: var(--radius-full);
-            font-size: 0.85rem;
-            font-weight: 600;
+            font-size: 0.86rem;
+            font-weight: 700;
             cursor: pointer;
-            transition: all 0.2s;
+            backdrop-filter: blur(12px);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .user-pill:active {
-            transform: scale(0.96);
-            background: var(--surface-light);
+            transform: scale(0.95);
+            background: rgba(30, 41, 59, 0.9);
+            border-color: var(--gold-primary);
         }
 
-        .avatar-dot {
-            width: 10px;
-            height: 10px;
-            background: var(--accent-emerald);
+        .avatar-glow-dot {
+            width: 9px;
+            height: 9px;
+            background: var(--emerald-main);
             border-radius: 50%;
-            box-shadow: 0 0 8px var(--accent-emerald);
+            box-shadow: 0 0 10px var(--emerald-main);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
 
         /* کانتینر اصلی */
@@ -145,146 +192,155 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             padding: 16px;
         }
 
-        /* کارت‌ها و المان‌های مشترک */
+        /* کارت‌ها و کانتینرهای شیشه‌ای (Glass Cards) */
         .card {
-            background: var(--surface-color);
-            border: 1px solid var(--border-color);
+            background: var(--bg-card);
+            backdrop-filter: blur(28px);
+            -webkit-backdrop-filter: blur(28px);
+            border: 1px solid var(--border-glass);
             border-radius: var(--radius-lg);
-            padding: 18px;
-            margin-bottom: 16px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s, box-shadow 0.2s;
+            padding: 20px;
+            margin-bottom: 18px;
+            box-shadow: 0 14px 35px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.25s, box-shadow 0.25s;
         }
 
         .card-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 14px;
+            margin-bottom: 16px;
         }
 
         .card-title {
-            font-size: 1rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        /* خلاصه مالی و ترازها */
-        .balance-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 14px;
-        }
-
-        .balance-item {
-            background: var(--bg-color);
-            border-radius: var(--radius-md);
-            padding: 14px 12px;
-            text-align: center;
-            border: 1px solid var(--border-color);
-        }
-
-        .balance-item.credit {
-            border-color: rgba(16, 185, 129, 0.4);
-            background: linear-gradient(180deg, rgba(16, 185, 129, 0.05) 0%, rgba(15, 23, 42, 0.6) 100%);
-        }
-
-        .balance-item.debt {
-            border-color: rgba(244, 63, 94, 0.4);
-            background: linear-gradient(180deg, rgba(244, 63, 94, 0.05) 0%, rgba(15, 23, 42, 0.6) 100%);
-        }
-
-        .balance-label {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            margin-bottom: 4px;
-        }
-
-        .balance-value {
-            font-size: 1.15rem;
+            font-size: 1.05rem;
             font-weight: 800;
-        }
-
-        .balance-value.green { color: var(--accent-emerald); }
-        .balance-value.red { color: var(--accent-rose); }
-        .balance-value.gold { color: var(--accent-amber); }
-
-        .overall-banner {
-            background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(30, 41, 59, 0.7));
-            border: 1px solid rgba(245, 158, 11, 0.3);
-            border-radius: var(--radius-md);
-            padding: 12px 14px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            font-size: 0.88rem;
-        }
-
-        /* اسلایدر/چیپ‌های گروه‌ها */
-        .groups-scroll {
-            display: flex;
             gap: 10px;
-            overflow-x: auto;
-            padding-bottom: 8px;
-            margin-bottom: 16px;
-            scrollbar-width: none;
-        }
-        .groups-scroll::-webkit-scrollbar { display: none; }
-
-        .group-chip {
-            flex: 0 0 auto;
-            background: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-full);
-            padding: 8px 16px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 6px;
         }
 
-        .group-chip.active {
-            background: var(--accent-amber);
-            color: #0f172a;
-            border-color: var(--accent-amber);
-            box-shadow: 0 4px 14px var(--accent-amber-glow);
-        }
-
-        /* کارت بانکی شکیل */
-        .bank-card {
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            border: 1px solid #475569;
-            border-radius: var(--radius-md);
-            padding: 16px;
-            margin-bottom: 10px;
+        /* مسترکارت / کارت اصلی مالی داشبورد */
+        .hero-wallet-card {
+            background: linear-gradient(135deg, #1e293b 0%, #111827 50%, #090d16 100%);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+            border-radius: var(--radius-lg);
+            padding: 22px;
+            margin-bottom: 20px;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.15);
             position: relative;
             overflow: hidden;
         }
 
-        .bank-card::after {
-            content: "💳";
+        .hero-wallet-card::before {
+            content: '';
             position: absolute;
-            left: -10px;
-            bottom: -15px;
-            font-size: 4.5rem;
-            opacity: 0.07;
+            top: -50px;
+            left: -50px;
+            width: 130px;
+            height: 130px;
+            background: radial-gradient(circle, var(--gold-glow) 0%, transparent 70%);
             pointer-events: none;
         }
 
-        .bank-name {
-            font-size: 0.85rem;
-            color: var(--accent-amber);
-            font-weight: 700;
+        .wallet-card-top {
             display: flex;
             align-items: center;
             justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .card-chip {
+            width: 38px;
+            height: 28px;
+            background: linear-gradient(135deg, #d97706, #fbbf24);
+            border-radius: 6px;
+            position: relative;
+            box-shadow: inset 0 1px 2px rgba(255,255,255,0.4);
+        }
+
+        .card-chip::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 0; right: 0; height: 1px;
+            background: rgba(0,0,0,0.3);
+        }
+
+        .hero-balance-label {
+            font-size: 0.8rem;
+            color: var(--text-sub);
+            margin-bottom: 4px;
+        }
+
+        .hero-balance-amount {
+            font-size: 1.95rem;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            margin-bottom: 16px;
+        }
+
+        .balance-split-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            background: var(--bg-inner);
+            border-radius: var(--radius-md);
+            padding: 12px 14px;
+            border: 1px solid var(--border-glass);
+        }
+
+        .split-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .split-label {
+            font-size: 0.74rem;
+            color: var(--text-sub);
+        }
+
+        .split-val {
+            font-size: 1rem;
+            font-weight: 800;
+        }
+
+        .split-val.green { color: var(--emerald-main); }
+        .split-val.red { color: var(--rose-main); }
+
+        /* کارت بانکی عابربانک مدرن */
+        .bank-card {
+            background: linear-gradient(135deg, #162032 0%, #0d131f 100%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-md);
+            padding: 18px;
+            margin-bottom: 12px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s;
+        }
+
+        .bank-card:active {
+            transform: scale(0.99);
+        }
+
+        .bank-card-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .bank-name-badge {
+            font-size: 0.88rem;
+            font-weight: 800;
+            color: var(--gold-primary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .card-number-box {
@@ -293,323 +349,400 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             justify-content: space-between;
             margin-top: 10px;
             font-family: monospace, var(--font-family);
-            font-size: 1.15rem;
-            font-weight: 700;
-            letter-spacing: 2px;
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: 2.5px;
             direction: ltr;
+            color: #ffffff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
         }
 
         .copy-btn {
-            background: rgba(245, 158, 11, 0.15);
-            color: var(--accent-amber);
-            border: 1px solid var(--accent-amber);
-            padding: 4px 10px;
+            background: rgba(245, 158, 11, 0.16);
+            color: var(--gold-primary);
+            border: 1px solid var(--gold-primary);
+            padding: 6px 14px;
             border-radius: var(--radius-sm);
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             cursor: pointer;
             font-family: var(--font-family);
-            font-weight: 600;
-            transition: all 0.2s;
+            font-weight: 700;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .copy-btn:active {
             transform: scale(0.92);
-            background: var(--accent-amber);
-            color: #0f172a;
+            background: var(--gold-primary);
+            color: #080c14;
         }
 
         /* کارت جمله روز کافه‌ای */
         .quote-card {
-            background: linear-gradient(135deg, #1e293b, #2a1f1d);
-            border: 1px solid rgba(245, 158, 11, 0.3);
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(42, 31, 29, 0.7) 100%);
+            border: 1px solid rgba(245, 158, 11, 0.28);
             border-radius: var(--radius-lg);
-            padding: 18px;
-            margin-bottom: 16px;
+            padding: 20px;
+            margin-bottom: 18px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
             position: relative;
         }
 
-        .quote-text {
-            font-size: 0.95rem;
-            font-weight: 500;
-            color: #fef08a;
-            line-height: 1.8;
-            text-align: center;
-        }
-
-        /* فرم‌ها و اینپوت‌ها */
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        .form-label {
-            display: block;
-            font-size: 0.85rem;
-            font-weight: 600;
-            margin-bottom: 6px;
-            color: var(--text-secondary);
-        }
-
-        .form-control {
-            width: 100%;
-            background: var(--bg-color);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            padding: 12px 14px;
-            font-family: var(--font-family);
-            font-size: 0.95rem;
-            color: var(--text-primary);
-            transition: border-color 0.2s;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: var(--accent-amber);
-            box-shadow: 0 0 0 2px var(--accent-amber-glow);
-        }
-
-        .segmented-control {
-            display: flex;
-            background: var(--bg-color);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            padding: 4px;
-            margin-bottom: 16px;
-        }
-
-        .segment-btn {
-            flex: 1;
-            padding: 8px 12px;
-            border: none;
-            background: transparent;
-            color: var(--text-secondary);
-            font-family: var(--font-family);
-            font-size: 0.85rem;
-            font-weight: 600;
-            border-radius: var(--radius-sm);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .segment-btn.active {
-            background: var(--surface-color);
-            color: var(--text-primary);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            font-weight: 700;
-        }
-
-        .btn-primary {
-            width: 100%;
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-            color: #0f172a;
-            border: none;
-            border-radius: var(--radius-md);
-            padding: 14px;
-            font-family: var(--font-family);
-            font-size: 1rem;
-            font-weight: 800;
-            cursor: pointer;
-            box-shadow: 0 4px 16px var(--accent-amber-glow);
-            transition: transform 0.15s, opacity 0.2s;
+        .quote-header {
             display: flex;
             align-items: center;
             justify-content: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            color: #fef08a;
+            font-weight: 700;
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .quote-text {
+            font-size: 0.98rem;
+            font-weight: 600;
+            color: #fffbeb;
+            line-height: 1.9;
+            text-align: center;
+        }
+
+        /* اسلایدر/چیپ‌های انتخاب گروه */
+        .groups-scroll {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+            margin-bottom: 18px;
+            scrollbar-width: none;
+        }
+        .groups-scroll::-webkit-scrollbar { display: none; }
+
+        .group-chip {
+            flex: 0 0 auto;
+            background: rgba(22, 30, 49, 0.7);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-full);
+            padding: 9px 18px;
+            font-size: 0.88rem;
+            font-weight: 700;
+            color: var(--text-sub);
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            align-items: center;
             gap: 8px;
         }
 
-        .btn-primary:active {
-            transform: scale(0.98);
-            opacity: 0.9;
+        .group-chip.active {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: #080c14;
+            border-color: #f59e0b;
+            box-shadow: 0 6px 18px var(--gold-glow);
+            transform: translateY(-1px);
         }
 
-        /* لیست اقلام خرید و هزینه‌ها */
+        /* ردیف‌های تسویه و هزینه‌ها */
         .item-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 12px 14px;
-            background: var(--bg-color);
-            border: 1px solid var(--border-color);
+            padding: 14px 16px;
+            background: var(--bg-inner);
+            border: 1px solid var(--border-glass);
             border-radius: var(--radius-md);
-            margin-bottom: 8px;
+            margin-bottom: 10px;
+            transition: border-color 0.2s, background 0.2s;
         }
 
-        .item-info {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .item-title {
-            font-size: 0.92rem;
-            font-weight: 700;
-        }
-
-        .item-sub {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
+        .item-row:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            background: rgba(14, 21, 35, 0.85);
         }
 
         .item-price {
-            font-size: 0.95rem;
-            font-weight: 800;
-            color: var(--accent-amber);
+            font-size: 1.05rem;
+            font-weight: 900;
+            color: var(--gold-primary);
             text-align: left;
+        }
+
+        /* دکمه‌ها و فرم‌ها */
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.88rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text-sub);
+        }
+
+        .form-control {
+            width: 100%;
+            background: var(--bg-inner);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-md);
+            padding: 13px 16px;
+            font-family: var(--font-family);
+            font-size: 0.96rem;
+            color: var(--text-main);
+            transition: all 0.2s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--gold-primary);
+            box-shadow: 0 0 0 3px var(--gold-glow);
+            background: rgba(15, 23, 42, 0.9);
+        }
+
+        .segmented-control {
+            display: flex;
+            background: var(--bg-inner);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-md);
+            padding: 4px;
+            margin-bottom: 18px;
+        }
+
+        .segment-btn {
+            flex: 1;
+            padding: 9px 14px;
+            border: none;
+            background: transparent;
+            color: var(--text-sub);
+            font-family: var(--font-family);
+            font-size: 0.86rem;
+            font-weight: 700;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .segment-btn.active {
+            background: rgba(30, 41, 59, 0.95);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            font-weight: 800;
+        }
+
+        .btn-primary {
+            width: 100%;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: #080c14;
+            border: none;
+            border-radius: var(--radius-md);
+            padding: 15px;
+            font-family: var(--font-family);
+            font-size: 1.02rem;
+            font-weight: 900;
+            cursor: pointer;
+            box-shadow: 0 6px 20px var(--gold-glow);
+            transition: transform 0.15s, opacity 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-primary:active {
+            transform: scale(0.98);
+            opacity: 0.92;
         }
 
         .del-btn {
             background: rgba(244, 63, 94, 0.15);
-            color: var(--accent-rose);
-            border: 1px solid var(--accent-rose);
+            color: var(--rose-main);
+            border: 1px solid var(--rose-main);
             border-radius: var(--radius-sm);
-            width: 30px;
-            height: 30px;
+            width: 32px;
+            height: 32px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            font-size: 0.85rem;
-            margin-right: 8px;
+            font-size: 0.88rem;
+            transition: transform 0.2s;
         }
 
-        /* چک‌باکس‌های اعضا در فرم ثبت هزینه */
+        .del-btn:active {
+            transform: scale(0.9);
+        }
+
+        /* چک‌باکس اعضا در فرم ثبت هزینه */
         .members-checklist {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin-top: 8px;
+            gap: 10px;
+            margin-top: 10px;
         }
 
         .member-checkbox-label {
             display: flex;
             align-items: center;
-            gap: 8px;
-            background: var(--bg-color);
-            border: 1px solid var(--border-color);
-            padding: 8px 12px;
-            border-radius: var(--radius-sm);
-            font-size: 0.85rem;
+            gap: 9px;
+            background: var(--bg-inner);
+            border: 1px solid var(--border-glass);
+            padding: 10px 14px;
+            border-radius: var(--radius-md);
+            font-size: 0.88rem;
             cursor: pointer;
+            transition: border-color 0.2s;
         }
 
         .member-checkbox-label input {
-            accent-color: var(--accent-amber);
+            accent-color: var(--gold-primary);
+            width: 16px;
+            height: 16px;
         }
 
         /* گردونه غذا */
         .wheel-container {
             text-align: center;
-            padding: 24px 0;
+            padding: 16px 0;
         }
 
         .food-slot-box {
-            background: linear-gradient(135deg, #1e293b, #0f172a);
-            border: 2px dashed var(--accent-amber);
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
+            border: 2px dashed rgba(245, 158, 11, 0.5);
             border-radius: var(--radius-lg);
-            padding: 30px 20px;
+            padding: 32px 20px;
             margin-bottom: 20px;
-            min-height: 140px;
+            min-height: 155px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 8px 24px var(--accent-amber-glow);
+            box-shadow: 0 12px 30px var(--gold-glow);
+            position: relative;
         }
 
         .food-emoji {
-            font-size: 3rem;
-            margin-bottom: 8px;
-            animation: bounce 1s infinite alternate;
+            font-size: 3.5rem;
+            margin-bottom: 10px;
+            animation: bounce 1.2s infinite alternate;
         }
 
         @keyframes bounce {
             from { transform: translateY(0); }
-            to { transform: translateY(-8px); }
+            to { transform: translateY(-10px); }
         }
 
         .food-name {
-            font-size: 1.4rem;
-            font-weight: 800;
+            font-size: 1.5rem;
+            font-weight: 900;
             color: #fef08a;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.5);
         }
 
         .food-category-pill {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            margin-top: 4px;
+            font-size: 0.82rem;
+            color: var(--text-sub);
+            margin-top: 6px;
+            font-weight: 600;
         }
 
-        /* نوار ناوبری پایین صفحه (Bottom Dock) */
-        .bottom-nav {
+        /* نوار ناوبری شناور و شیشه‌ای پایین (Floating Glass Dock) */
+        .floating-dock-wrapper {
             position: fixed;
-            bottom: 0;
+            bottom: 14px;
             left: 0;
             right: 0;
-            height: var(--bottom-nav-height);
-            background: rgba(15, 23, 42, 0.94);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: center;
+            z-index: 100;
+            padding: 0 16px;
+            pointer-events: none;
+        }
+
+        .bottom-dock {
+            pointer-events: auto;
+            width: 100%;
+            max-width: 520px;
+            height: var(--dock-height);
+            background: rgba(13, 19, 32, 0.88);
+            backdrop-filter: blur(28px);
+            -webkit-backdrop-filter: blur(28px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: var(--radius-full);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.15);
             display: flex;
             align-items: center;
             justify-content: space-around;
-            z-index: 100;
-            max-width: 600px;
-            margin: 0 auto;
+            padding: 0 8px;
         }
 
-        .nav-btn {
+        .nav-dock-btn {
             background: transparent;
             border: none;
-            color: var(--text-secondary);
+            color: var(--text-muted);
             font-family: var(--font-family);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 4px;
+            gap: 3px;
             font-size: 0.72rem;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
             flex: 1;
             height: 100%;
-            transition: all 0.2s;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
         }
 
-        .nav-btn .icon {
-            font-size: 1.3rem;
-            transition: transform 0.2s;
+        .nav-dock-btn .nav-icon {
+            font-size: 1.35rem;
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
-        .nav-btn.active {
-            color: var(--accent-amber);
-            font-weight: 800;
+        .nav-dock-btn.active {
+            color: var(--gold-primary);
         }
 
-        .nav-btn.active .icon {
-            transform: translateY(-2px) scale(1.15);
+        .nav-dock-btn.active .nav-icon {
+            transform: translateY(-3px) scale(1.18);
         }
 
-        /* نوتیفیکیشن / Toast */
+        .nav-dock-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: 6px;
+            width: 14px;
+            height: 3px;
+            background: var(--gold-primary);
+            border-radius: var(--radius-full);
+            box-shadow: 0 0 8px var(--gold-primary);
+        }
+
+        /* نوتیفیکیشن / Toast شناور لوکس */
         .toast {
             position: fixed;
-            top: 70px;
+            top: 75px;
             left: 50%;
-            transform: translateX(-50%) translateY(-20px);
-            background: #1e293b;
-            color: #f8fafc;
-            border: 1px solid var(--accent-amber);
-            padding: 10px 20px;
+            transform: translateX(-50%) translateY(-25px);
+            background: rgba(18, 24, 38, 0.95);
+            color: var(--text-main);
+            border: 1px solid var(--gold-primary);
+            padding: 11px 24px;
             border-radius: var(--radius-full);
-            font-size: 0.88rem;
-            font-weight: 600;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            font-size: 0.9rem;
+            font-weight: 700;
+            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5), 0 0 20px var(--gold-glow);
             z-index: 200;
             opacity: 0;
             pointer-events: none;
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            backdrop-filter: blur(20px);
+            transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
         }
 
         .toast.show {
@@ -617,27 +750,27 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             transform: translateX(-50%) translateY(0);
         }
 
-        /* لودر و محتوای خالی */
+        /* حالت خالی و لودینگ */
         .empty-state {
             text-align: center;
             padding: 40px 20px;
-            color: var(--text-secondary);
+            color: var(--text-sub);
         }
 
         .empty-icon {
-            font-size: 2.5rem;
+            font-size: 2.8rem;
             margin-bottom: 12px;
-            opacity: 0.7;
+            opacity: 0.8;
         }
 
         .loading-spinner {
             display: inline-block;
-            width: 32px;
-            height: 32px;
+            width: 34px;
+            height: 34px;
             border: 3px solid rgba(245, 158, 11, 0.2);
             border-radius: 50%;
-            border-top-color: var(--accent-amber);
-            animation: spin 0.8s linear infinite;
+            border-top-color: var(--gold-primary);
+            animation: spin 0.75s linear infinite;
         }
 
         @keyframes spin {
@@ -645,22 +778,30 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
         }
 
         .tab-content { display: none; }
-        .tab-content.active { display: block; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
 
+    <!-- کانواس آتش‌بازی و انیمیشن جشن -->
+    <canvas id="confettiCanvas"></canvas>
+
     <!-- هدر بالای صفحه -->
     <header class="app-header">
         <div class="brand-box">
-            <div class="brand-icon">☕</div>
+            <div class="brand-icon-box">☕</div>
             <div>
                 <div class="brand-title">کافه دنگ</div>
                 <div class="brand-subtitle">پارتنر حساب و کتاب دورهمی</div>
             </div>
         </div>
         <div class="user-pill" id="userPill" onclick="promptSwitchUser()">
-            <span class="avatar-dot"></span>
+            <span class="avatar-glow-dot"></span>
             <span id="userNameHeader">در حال اتصال...</span>
         </div>
     </header>
@@ -670,64 +811,64 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
 
         <!-- تب ۱: داشبورد من -->
         <section id="tab-dashboard" class="tab-content active">
-            <!-- کارت خوش‌آمدگویی و تراز کل -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">📊 وضعیت مالی حساب من</div>
-                    <span id="refreshBtn" style="cursor:pointer; font-size:1.1rem;" onclick="loadData()">🔄</span>
-                </div>
-                <div class="balance-grid">
-                    <div class="balance-item credit">
-                        <div class="balance-label">طلبکاری‌های من 💚</div>
-                        <div class="balance-value green" id="statCreditor">۰ تومان</div>
+            <!-- مسترکارت وضعیت مالی لوکس -->
+            <div class="hero-wallet-card">
+                <div class="wallet-card-top">
+                    <div>
+                        <div class="hero-balance-label">تراز خالص حساب شما</div>
+                        <div class="hero-balance-amount" id="statNetTotal">۰ تومان</div>
                     </div>
-                    <div class="balance-item debt">
-                        <div class="balance-label">بدهکاری‌های من 🔴</div>
-                        <div class="balance-value red" id="statDebtor">۰ تومان</div>
-                    </div>
+                    <div class="card-chip"></div>
                 </div>
-                <div class="overall-banner" id="statOverallBanner">
-                    <span>تراز کلی شما:</span>
-                    <strong id="statNetTotal" class="green">۰ تومان</strong>
+
+                <div class="balance-split-row">
+                    <div class="split-item">
+                        <span class="split-label">طلبکاری‌های شما 💚</span>
+                        <span class="split-val green" id="statCreditor">۰ تومان</span>
+                    </div>
+                    <div class="split-item" style="border-right: 1px solid var(--border-glass); padding-right: 12px;">
+                        <span class="split-label">بدهکاری‌های شما 🔴</span>
+                        <span class="split-val red" id="statDebtor">۰ تومان</span>
+                    </div>
                 </div>
             </div>
 
-            <!-- کارت جمله انگیزشی روز -->
+            <!-- کارت جمله روز کافه‌ای -->
             <div class="quote-card">
-                <div style="font-size:0.75rem; color:#fde68a; margin-bottom:6px; text-align:center;">☕ جرعه‌ای حس خوب کافه‌ای:</div>
+                <div class="quote-header">☕ جرعه‌ای حس خوب کافه‌ای:</div>
                 <div class="quote-text" id="dailyQuoteText">قهوه‌ت رو بنوش، نفس عمیق بکش؛ قشنگ‌ترین اتفاق‌ها همیشه بی‌خبر میان ✨</div>
             </div>
 
-            <!-- کارت‌های بانکی من -->
+            <!-- کارت‌های بانکی من (Apple Wallet Style) -->
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">💳 شماره کارت‌های من</div>
-                    <button class="copy-btn" onclick="openAddCardModal()">➕ افزودن کارت</button>
+                    <button class="copy-btn" onclick="openAddCardModal()">➕ ثبت کارت جدید</button>
                 </div>
                 <div id="cardsListContainer">
                     <div class="empty-state">
                         <div class="loading-spinner"></div>
-                        <p style="margin-top:10px;">در حال بارگذاری اطلاعات...</p>
+                        <p style="margin-top:12px;">در حال بارگذاری اطلاعات...</p>
                     </div>
                 </div>
             </div>
 
-            <!-- میانبرهای سریع -->
+            <!-- میانبرهای سریع و تعاملی -->
             <div class="card">
-                <div class="card-title" style="margin-bottom:12px;">⚡ دسترسی‌های سریع</div>
-                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
-                    <button class="copy-btn" style="padding:12px 6px; font-size:0.8rem;" onclick="switchTab('add-expense')">➕ ثبت هزینه</button>
-                    <button class="copy-btn" style="padding:12px 6px; font-size:0.8rem;" onclick="switchTab('shopping')">🛒 لیست خرید</button>
-                    <button class="copy-btn" style="padding:12px 6px; font-size:0.8rem;" onclick="switchTab('food')">🍕 گردونه غذا</button>
+                <div class="card-title" style="margin-bottom:14px;">⚡ دسترسی‌های سریع</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+                    <button class="copy-btn" style="padding:14px 8px; justify-content:center; font-size:0.85rem;" onclick="switchTab('add-expense')">💸 ثبت هزینه</button>
+                    <button class="copy-btn" style="padding:14px 8px; justify-content:center; font-size:0.85rem;" onclick="switchTab('shopping')">🛒 فاکتور خرید</button>
+                    <button class="copy-btn" style="padding:14px 8px; justify-content:center; font-size:0.85rem;" onclick="switchTab('food')">🍕 گردونه غذا</button>
                 </div>
             </div>
         </section>
 
         <!-- تب ۲: گروه‌ها و دنگ‌ها -->
         <section id="tab-groups" class="tab-content">
-            <!-- چیپ‌های انتخاب گروه -->
+            <!-- چیپ‌های اسکرول گروه‌ها -->
             <div class="groups-scroll" id="groupsChipsContainer">
-                <!-- دکمه‌های گروه‌ها از طریق جاوااسکریپت پر می‌شوند -->
+                <!-- دکمه‌های گروه‌ها -->
             </div>
 
             <div id="activeGroupDetailCard">
@@ -735,15 +876,14 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             </div>
         </section>
 
-        <!-- تب ۳: ثبت هزینه سریع -->
+        <!-- تب ۳: ثبت سریع هزینه -->
         <section id="tab-add-expense" class="tab-content">
             <div class="card">
-                <div class="card-title" style="margin-bottom:14px;">💸 ثبت سریع هزینه جدید</div>
+                <div class="card-title" style="margin-bottom:16px;">💸 ثبت سریع و آنلاین هزینه</div>
                 
                 <div class="form-group">
                     <label class="form-label">گروه مورد نظر:</label>
                     <select id="expenseGroupSelect" class="form-control" onchange="onExpenseGroupChange()">
-                        <!-- گزینه‌های گروه‌ها -->
                     </select>
                 </div>
 
@@ -766,7 +906,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
 
                 <!-- حالت ۲: قیمت واحد × تعداد -->
                 <div id="qtyAmountBox" style="display:none;">
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
                         <div>
                             <label class="form-label">قیمت هر واحد (تومان):</label>
                             <input type="number" id="expenseUnitPriceInput" class="form-control" placeholder="35000" oninput="calcQtyTotal()">
@@ -776,32 +916,30 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                             <input type="number" id="expenseQuantityInput" class="form-control" placeholder="4" step="0.5" oninput="calcQtyTotal()">
                         </div>
                     </div>
-                    <div class="overall-banner" style="margin-bottom:14px;">
-                        <span>مبلغ کل محاسبه‌شده:</span>
-                        <strong id="qtyCalculatedTotal" class="green">۰ تومان</strong>
+                    <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:12px 16px; display:flex; justify-content:space-between; margin-bottom:16px;">
+                        <span style="color:var(--text-sub); font-size:0.88rem;">مبلغ کل محاسبه‌شده:</span>
+                        <strong id="qtyCalculatedTotal" style="color:var(--gold-primary); font-size:1.05rem;">۰ تومان</strong>
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label class="form-label">پرداخت‌کننده (کی حساب کرده؟):</label>
                     <select id="expensePayerSelect" class="form-control">
-                        <!-- اعضای گروه -->
                     </select>
                 </div>
 
                 <div class="form-group">
-                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
                         <label class="form-label" style="margin:0;">کسانی که در دنگ سهیم هستند:</label>
-                        <span style="font-size:0.75rem; color:var(--accent-amber); cursor:pointer;" onclick="toggleAllExpenseMembers()">انتخاب / لغو همه</span>
+                        <span style="font-size:0.78rem; color:var(--gold-primary); cursor:pointer; font-weight:700;" onclick="toggleAllExpenseMembers()">انتخاب / لغو همه</span>
                     </div>
                     <div class="members-checklist" id="expenseMembersChecklist">
-                        <!-- چک‌باکس اعضا -->
                     </div>
                 </div>
 
-                <div class="overall-banner" style="margin-bottom:16px;">
-                    <span>سهم هر نفر:</span>
-                    <strong id="previewPerShare" class="green">۰ تومان</strong>
+                <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:14px 16px; display:flex; justify-content:space-between; margin-bottom:18px;">
+                    <span style="color:var(--text-sub); font-size:0.9rem;">سهم هر نفر:</span>
+                    <strong id="previewPerShare" style="color:var(--emerald-main); font-size:1.1rem;">۰ تومان</strong>
                 </div>
 
                 <button class="btn-primary" onclick="submitNewExpense()">
@@ -814,39 +952,38 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
         <section id="tab-shopping" class="tab-content">
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">🛒 فاکتور و لیست خرید گروه</div>
-                    <select id="shoppingGroupSelect" class="form-control" style="width:auto; padding:6px 12px; font-size:0.85rem;" onchange="renderShoppingList()">
+                    <div class="card-title">🛒 فاکتور و لیست خرید دورهمی</div>
+                    <select id="shoppingGroupSelect" class="form-control" style="width:auto; padding:6px 14px; font-size:0.86rem;" onchange="renderShoppingList()">
                     </select>
                 </div>
 
-                <!-- فرم افزودن سریع قلم -->
-                <div style="background:var(--bg-color); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:14px; margin-bottom:16px;">
-                    <div style="font-size:0.88rem; font-weight:700; margin-bottom:10px; color:var(--accent-amber);">➕ افزودن قلم جدید به فاکتور:</div>
-                    <div class="form-group" style="margin-bottom:8px;">
-                        <input type="text" id="shopItemName" class="form-control" placeholder="نام قلم (مثلاً: گوشت چرخ‌کرده، نان، نوشابه)">
+                <!-- فرم افزودن سریع قلم به فاکتور -->
+                <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:16px; margin-bottom:18px;">
+                    <div style="font-size:0.92rem; font-weight:800; margin-bottom:12px; color:var(--gold-primary);">➕ افزودن قلم جدید به فاکتور:</div>
+                    <div class="form-group" style="margin-bottom:10px;">
+                        <input type="text" id="shopItemName" class="form-control" placeholder="نام کالا (مثلاً: گوشت چرخ‌کرده، نان، نوشابه)">
                     </div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
                         <input type="number" id="shopItemUnitPrice" class="form-control" placeholder="قیمت واحد (تومان)" oninput="calcShopPreview()">
                         <input type="number" id="shopItemQuantity" class="form-control" placeholder="تعداد یا کیلو (پیش‌فرض: ۱)" step="0.5" oninput="calcShopPreview()">
                     </div>
-                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; font-size:0.85rem;">
-                        <span style="color:var(--text-secondary);">قیمت کل قلم:</span>
-                        <strong id="shopItemTotalPreview" style="color:var(--accent-amber);">۰ تومان</strong>
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; font-size:0.88rem;">
+                        <span style="color:var(--text-sub);">قیمت کل قلم:</span>
+                        <strong id="shopItemTotalPreview" style="color:var(--gold-primary); font-size:1.05rem;">۰ تومان</strong>
                     </div>
-                    <button class="btn-primary" style="padding:10px;" onclick="submitNewShoppingItem()">
+                    <button class="btn-primary" style="padding:12px;" onclick="submitNewShoppingItem()">
                         <span>افزودن به لیست خرید</span>
                     </button>
                 </div>
 
                 <!-- لیست اقلام فاکتور -->
                 <div id="shoppingItemsContainer">
-                    <!-- اقلام با جاوااسکریپت پر می‌شوند -->
                 </div>
 
                 <!-- جمع کل فاکتور -->
-                <div class="overall-banner" style="margin-top:14px;">
-                    <span>جمع کل فاکتور خرید:</span>
-                    <strong id="shoppingGrandTotal" class="green">۰ تومان</strong>
+                <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:14px 16px; display:flex; justify-content:space-between; margin-top:16px;">
+                    <span style="color:var(--text-sub); font-size:0.92rem;">جمع کل فاکتور خرید:</span>
+                    <strong id="shoppingGrandTotal" style="color:var(--emerald-main); font-size:1.15rem;">۰ تومان</strong>
                 </div>
             </div>
         </section>
@@ -855,11 +992,11 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
         <section id="tab-food" class="tab-content">
             <div class="card wheel-container">
                 <div class="card-title" style="justify-content:center; margin-bottom:8px;">🍕 چی بخوریم؟ (گردونه شانس دورهمی)</div>
-                <p style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:16px;">
-                    نمی‌دونید برای دورهمی چی سفارش بدید؟ بذارید کافه دنگ رندوم براتون انتخاب کنه! 😋
+                <p style="font-size:0.84rem; color:var(--text-sub); margin-bottom:18px;">
+                    نمی‌دونید چی سفارش بدید؟ بذارید کافه دنگ رندوم براتون انتخاب کنه! 😋
                 </p>
 
-                <div class="segmented-control" style="margin-bottom:16px;">
+                <div class="segmented-control" style="margin-bottom:18px;">
                     <button class="segment-btn active" onclick="setFoodCategory('all', this)">همه 🎲</button>
                     <button class="segment-btn" onclick="setFoodCategory('fastfood', this)">فست‌فود 🍔</button>
                     <button class="segment-btn" onclick="setFoodCategory('traditional', this)">سنتی 🍢</button>
@@ -873,22 +1010,22 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     <div class="food-category-pill" id="foodDesc">پیشنهاد خوشمزه برای دورهمی شما</div>
                 </div>
 
-                <button class="btn-primary" id="spinFoodBtn" onclick="spinFoodWheel()" style="margin-bottom:14px;">
+                <button class="btn-primary" id="spinFoodBtn" onclick="spinFoodWheel()" style="margin-bottom:16px;">
                     <span>🎲 بچرخون و انتخاب کن!</span>
                 </button>
 
-                <!-- بخش افزودن غذای دلخواه جدید به گردونه -->
-                <div style="background:var(--bg-color); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:16px; margin-top:16px; text-align:right;">
-                    <div style="font-size:0.92rem; font-weight:700; margin-bottom:10px; color:var(--accent-amber); display:flex; align-items:center; gap:6px;">
+                <!-- فرم افزودن غذای دلخواه جدید به گردونه -->
+                <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:18px; margin-top:18px; text-align:right;">
+                    <div style="font-size:0.94rem; font-weight:800; margin-bottom:12px; color:var(--gold-primary); display:flex; align-items:center; gap:8px;">
                         <span>➕ افزودن غذای دلخواه به گزینه‌ها:</span>
                     </div>
-                    <div class="form-group" style="margin-bottom:10px;">
+                    <div class="form-group" style="margin-bottom:12px;">
                         <input type="text" id="customFoodInput" class="form-control" placeholder="نام غذا (مثلاً: پاستا آلفردو، ساندویچ بندری، دیزی...)">
                     </div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
                         <div>
-                            <label class="form-label" style="font-size:0.75rem;">دسته‌بندی:</label>
-                            <select id="customFoodCatSelect" class="form-control" style="padding:8px 10px; font-size:0.85rem;">
+                            <label class="form-label" style="font-size:0.78rem;">دسته‌بندی:</label>
+                            <select id="customFoodCatSelect" class="form-control" style="padding:9px 12px; font-size:0.86rem;">
                                 <option value="fastfood">فست‌فود 🍔</option>
                                 <option value="traditional">سنتی و خوراک 🍢</option>
                                 <option value="cafe">کافه و دسر ☕</option>
@@ -896,8 +1033,8 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                             </select>
                         </div>
                         <div>
-                            <label class="form-label" style="font-size:0.75rem;">ایموجی یا آیکون:</label>
-                            <select id="customFoodEmojiSelect" class="form-control" style="padding:8px 10px; font-size:0.85rem;">
+                            <label class="form-label" style="font-size:0.78rem;">ایموجی یا آیکون:</label>
+                            <select id="customFoodEmojiSelect" class="form-control" style="padding:9px 12px; font-size:0.86rem;">
                                 <option value="🍕">🍕 پیتزا</option>
                                 <option value="🍔">🍔 برگر</option>
                                 <option value="🍢">🍢 کباب</option>
@@ -911,17 +1048,16 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                             </select>
                         </div>
                     </div>
-                    <button class="btn-primary" style="padding:10px; font-size:0.9rem;" onclick="submitNewCustomFood()">
+                    <button class="btn-primary" style="padding:12px; font-size:0.92rem;" onclick="submitNewCustomFood()">
                         <span>➕ ثبت و اضافه به گردونه</span>
                     </button>
 
                     <!-- لیست غذاهای اضافه شده -->
-                    <div style="margin-top:16px;">
-                        <div style="font-size:0.82rem; font-weight:700; color:var(--text-secondary); margin-bottom:8px;">
+                    <div style="margin-top:18px;">
+                        <div style="font-size:0.84rem; font-weight:800; color:var(--text-sub); margin-bottom:10px;">
                             📋 غذاهای اضافه شده توسط شما و گروه:
                         </div>
                         <div id="customFoodsListContainer">
-                            <!-- به صورت پویا پر می‌شود -->
                         </div>
                     </div>
                 </div>
@@ -930,29 +1066,31 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
 
     </main>
 
-    <!-- نوار ناوبری پایین صفحه (Dock) -->
-    <nav class="bottom-nav">
-        <button class="nav-btn active" id="btn-dashboard" onclick="switchTab('dashboard')">
-            <span class="icon">🏠</span>
-            <span>داشبورد</span>
-        </button>
-        <button class="nav-btn" id="btn-groups" onclick="switchTab('groups')">
-            <span class="icon">👥</span>
-            <span>گروه‌ها</span>
-        </button>
-        <button class="nav-btn" id="btn-add-expense" onclick="switchTab('add-expense')">
-            <span class="icon">➕</span>
-            <span>ثبت هزینه</span>
-        </button>
-        <button class="nav-btn" id="btn-shopping" onclick="switchTab('shopping')">
-            <span class="icon">🛒</span>
-            <span>خرید</span>
-        </button>
-        <button class="nav-btn" id="btn-food" onclick="switchTab('food')">
-            <span class="icon">🍕</span>
-            <span>چی بخوریم</span>
-        </button>
-    </nav>
+    <!-- نوار ناوبری شناور و شیشه‌ای پایین (Floating Glass Dock) -->
+    <div class="floating-dock-wrapper">
+        <nav class="bottom-dock">
+            <button class="nav-dock-btn active" id="btn-dashboard" onclick="switchTab('dashboard')">
+                <span class="nav-icon">🏠</span>
+                <span>داشبورد</span>
+            </button>
+            <button class="nav-dock-btn" id="btn-groups" onclick="switchTab('groups')">
+                <span class="nav-icon">👥</span>
+                <span>گروه‌ها</span>
+            </button>
+            <button class="nav-dock-btn" id="btn-add-expense" onclick="switchTab('add-expense')">
+                <span class="nav-icon">➕</span>
+                <span>ثبت هزینه</span>
+            </button>
+            <button class="nav-dock-btn" id="btn-shopping" onclick="switchTab('shopping')">
+                <span class="nav-icon">🛒</span>
+                <span>خرید</span>
+            </button>
+            <button class="nav-dock-btn" id="btn-food" onclick="switchTab('food')">
+                <span class="nav-icon">🍕</span>
+                <span>چی بخوریم</span>
+            </button>
+        </nav>
+    </div>
 
     <!-- توست پیام موقت -->
     <div class="toast" id="toastMessage">
@@ -967,8 +1105,8 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             try {
                 tg.ready();
                 tg.expand();
-                if (tg.setHeaderColor) tg.setHeaderColor('#0f172a');
-                if (tg.setBackgroundColor) tg.setBackgroundColor('#0f172a');
+                if (tg.setHeaderColor) tg.setHeaderColor('#080c14');
+                if (tg.setBackgroundColor) tg.setBackgroundColor('#080c14');
             } catch(e) {
                 console.log('TG Init note:', e);
             }
@@ -980,10 +1118,11 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             userData: null,
             currentGroupId: null,
             expenseMode: 'simple',
-            selectedFoodCategory: 'all'
+            selectedFoodCategory: 'all',
+            customFoods: []
         };
 
-        // فهرست غذاهای کافه دنگ
+        // فهرست پیش‌فرض غذاهای کافه دنگ
         const FOOD_DATABASE = [
             { name: "پیتزا پپرونی تند و کش‌دار", emoji: "🍕", cat: "fastfood", desc: "همیشه اولین گزینه دورهمی‌های پایه‌ست!" },
             { name: "چیزبرگر دوبل با سیب‌زمینی سرخ‌کرده", emoji: "🍔", cat: "fastfood", desc: "آبدار و مشتی، هیچکی دست رد به سینه‌ش نمی‌زنه!" },
@@ -999,13 +1138,13 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             { name: "املت گوجه‌فرنگی قهوه‌خانه‌ای پرپیاز", emoji: "🍳", cat: "traditional", desc: "ساده، اقتصادی، رفاقتی و از همه‌چی خوشمزه‌تر!" }
         ];
 
-        // عدد فرمت شده به ریال/تومان
+        // عدد فرمت شده به تومان
         function formatToman(num) {
-            if (num === null || num === undefined) return "۰";
+            if (num === null || num === undefined) return "۰ تومان";
             return Number(num).toLocaleString('fa-IR') + " تومان";
         }
 
-        // نمایش Toast
+        // نمایش Toast شناور
         function showToast(text) {
             const toast = document.getElementById('toastMessage');
             document.getElementById('toastText').innerText = text;
@@ -1015,10 +1154,10 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             }
             setTimeout(() => {
                 toast.classList.remove('show');
-            }, 2500);
+            }, 2600);
         }
 
-        // کپی شماره کارت
+        // کپی متن با Toast
         function copyText(text, label) {
             navigator.clipboard.writeText(text).then(() => {
                 showToast((label || 'متن') + ' کپی شد ✨');
@@ -1036,7 +1175,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
         // تعویض تب‌ها
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-dock-btn').forEach(el => el.classList.remove('active'));
             
             const targetTab = document.getElementById('tab-' + tabId);
             const targetBtn = document.getElementById('btn-' + tabId);
@@ -1057,7 +1196,6 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
         async function loadData() {
             try {
                 let url = '/api/app/user_data';
-                // بررسی کاربر تلگرام
                 if (tg?.initDataUnsafe?.user?.id) {
                     appState.userId = tg.initDataUnsafe.user.id;
                     url += '?user_id=' + appState.userId;
@@ -1065,7 +1203,6 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     url += '?user_id=' + appState.userId;
                 }
 
-                // بررسی پارامتر query string مثلا ?group_id=...
                 const urlParams = new URLSearchParams(window.location.search);
                 const qGroupId = urlParams.get('group_id');
                 if (qGroupId) appState.currentGroupId = parseInt(qGroupId);
@@ -1081,11 +1218,9 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     document.getElementById('userNameHeader').innerText = data.user.calling_name || data.user.full_name || 'کاربر گرامی';
                 }
 
-                // بروزرسانی داشبورد
                 renderDashboard(data);
                 renderCustomFoodsList();
 
-                // مقداردهی اولیه گروه
                 if (data.groups && data.groups.length > 0) {
                     if (!appState.currentGroupId || !data.groups.some(g => g.id === appState.currentGroupId)) {
                         appState.currentGroupId = data.groups[0].id;
@@ -1107,14 +1242,14 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             
             const netEl = document.getElementById('statNetTotal');
             if (stats.net_total > 0) {
-                netEl.innerText = '+' + formatToman(stats.net_total) + ' (طلبکار)';
-                netEl.className = 'balance-value green';
+                netEl.innerText = '+' + formatToman(stats.net_total);
+                netEl.style.color = 'var(--emerald-main)';
             } else if (stats.net_total < 0) {
-                netEl.innerText = formatToman(stats.net_total) + ' (بدهکار)';
-                netEl.className = 'balance-value red';
+                netEl.innerText = formatToman(stats.net_total);
+                netEl.style.color = 'var(--rose-main)';
             } else {
                 netEl.innerText = 'بی‌حساب و صاف ✨';
-                netEl.className = 'balance-value gold';
+                netEl.style.color = 'var(--gold-primary)';
             }
 
             if (data.daily_quote) {
@@ -1130,9 +1265,12 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     const formatted = cleanNum.replace(/(\d{4})/g, '$1 ').trim();
                     html += `
                         <div class="bank-card">
-                            <div class="bank-name">
-                                <span>${c.bank_name || 'بانک'}</span>
-                                ${c.is_default ? '<span style="font-size:0.75rem; color:#fef08a;">★ کارت اصلی</span>' : ''}
+                            <div class="bank-card-top">
+                                <div class="bank-name-badge">
+                                    <span>🏦</span>
+                                    <span>${c.bank_name || 'بانک'}</span>
+                                </div>
+                                ${c.is_default ? '<span style="font-size:0.75rem; color:#fef08a; font-weight:700;">★ کارت اصلی</span>' : ''}
                             </div>
                             <div class="card-number-box">
                                 <span>${formatted}</span>
@@ -1147,7 +1285,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     <div class="empty-state">
                         <div class="empty-icon">💳</div>
                         <p>هنوز شماره کارتی ثبت نکردی جان دلم!</p>
-                        <button class="copy-btn" style="margin-top:8px;" onclick="openAddCardModal()">➕ ثبت اولین کارت</button>
+                        <button class="copy-btn" style="margin-top:10px;" onclick="openAddCardModal()">➕ ثبت اولین کارت</button>
                     </div>
                 `;
             }
@@ -1167,7 +1305,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 return;
             }
 
-            // چیپ‌های گروه‌ها
+            // چیپ‌های انتخاب گروه
             let chipsHtml = '';
             data.groups.forEach(g => {
                 const activeCls = g.id === appState.currentGroupId ? 'active' : '';
@@ -1180,7 +1318,6 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             });
             document.getElementById('groupsChipsContainer').innerHTML = chipsHtml;
 
-            // جزئیات گروه فعال
             const currentGroup = data.groups.find(g => g.id === appState.currentGroupId) || data.groups[0];
             if (!currentGroup) return;
 
@@ -1189,16 +1326,16 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     <div class="card-header">
                         <div>
                             <div class="card-title">🏕️ ${currentGroup.title}</div>
-                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">
-                                ${currentGroup.members.length} عضو • کد دعوت: <code>${currentGroup.invite_code}</code>
+                            <div style="font-size:0.78rem; color:var(--text-sub); margin-top:3px;">
+                                ${currentGroup.members.length} عضو • کد دعوت: <code style="color:var(--gold-primary); font-weight:700;">${currentGroup.invite_code}</code>
                             </div>
                         </div>
                         <button class="copy-btn" onclick="copyInviteLink('${currentGroup.invite_code}')">💌 لینک دعوت</button>
                     </div>
 
                     <!-- بخش تسویه حساب بدهی‌ها -->
-                    <div style="margin-top:16px;">
-                        <div style="font-size:0.9rem; font-weight:700; margin-bottom:8px; color:var(--accent-amber);">
+                    <div style="margin-top:18px;">
+                        <div style="font-size:0.94rem; font-weight:800; margin-bottom:12px; color:var(--gold-primary);">
                             ⚖️ فرمول تسویه حساب بدهی‌ها:
                         </div>
             `;
@@ -1214,25 +1351,25 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     const toUserCardFormatted = s.to_card_formatted || (toUserCard ? toUserCard.replace(/(\d{4})/g, '$1 ').trim() : '');
                     
                     groupHtml += `
-                        <div class="item-row" style="flex-direction:column; align-items:stretch; gap:10px; padding:14px; margin-bottom:10px;">
+                        <div class="item-row" style="flex-direction:column; align-items:stretch; gap:12px; padding:16px; margin-bottom:12px;">
                             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-                                <div style="font-size:0.95rem; font-weight:700;">
-                                    <span style="color:var(--accent-rose);">${fromName}</span>
-                                    <span style="color:var(--text-secondary); font-size:0.82rem; margin:0 6px;">بدهد به ➔</span>
-                                    <span style="color:var(--accent-emerald);">${toName}</span>
+                                <div style="font-size:0.98rem; font-weight:800;">
+                                    <span style="color:var(--rose-main);">${fromName}</span>
+                                    <span style="color:var(--text-sub); font-size:0.84rem; margin:0 6px;">بدهد به ➔</span>
+                                    <span style="color:var(--emerald-main);">${toName}</span>
                                 </div>
-                                <div class="item-price" style="font-size:1.05rem;">${formatToman(s.amount)}</div>
+                                <div class="item-price" style="font-size:1.1rem;">${formatToman(s.amount)}</div>
                             </div>
                             ${toUserCard ? `
-                                <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(15,23,42,0.6); padding:8px 12px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
-                                    <div style="font-size:0.78rem; color:var(--text-secondary); display:flex; align-items:center; gap:6px;">
+                                <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(8,12,20,0.7); padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border-glass);">
+                                    <div style="font-size:0.82rem; color:var(--text-sub); display:flex; align-items:center; gap:8px;">
                                         <span>💳 شماره کارت:</span>
-                                        <span style="font-family:monospace; direction:ltr; unicode-bidi:embed; font-size:0.92rem; color:var(--text-primary); font-weight:700; letter-spacing:1px;">${toUserCardFormatted}</span>
+                                        <span style="font-family:monospace; direction:ltr; unicode-bidi:embed; font-size:0.98rem; color:#ffffff; font-weight:800; letter-spacing:1.5px;">${toUserCardFormatted}</span>
                                     </div>
                                     <button class="copy-btn" onclick="copyText('${toUserCard}', 'شماره کارت')">کپی کارت</button>
                                 </div>
                             ` : `
-                                <div style="font-size:0.75rem; color:var(--text-muted);">
+                                <div style="font-size:0.78rem; color:var(--text-muted);">
                                     (شماره کارت طلبکار هنوز ثبت نشده است)
                                 </div>
                             `}
@@ -1241,7 +1378,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 });
             } else {
                 groupHtml += `
-                    <div style="background:var(--bg-color); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:12px; text-align:center; color:var(--accent-emerald); font-size:0.88rem;">
+                    <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:14px; text-align:center; color:var(--emerald-main); font-size:0.9rem; font-weight:700;">
                         ✨ تمام حساب‌ها در این گروه صاف و تسویه است!
                     </div>
                 `;
@@ -1249,8 +1386,8 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
 
             // لیست آخرین هزینه‌ها
             groupHtml += `
-                    <div style="margin-top:20px;">
-                        <div style="font-size:0.9rem; font-weight:700; margin-bottom:8px; color:var(--accent-amber);">
+                    <div style="margin-top:22px;">
+                        <div style="font-size:0.94rem; font-weight:800; margin-bottom:10px; color:var(--gold-primary);">
                             💸 هزینه‌های اخیر گروه:
                         </div>
             `;
@@ -1260,9 +1397,9 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 expenses.forEach(e => {
                     groupHtml += `
                         <div class="item-row">
-                            <div class="item-info">
-                                <div class="item-title">${e.title}</div>
-                                <div class="item-sub">پرداخت‌کننده: <strong>${e.payer_name}</strong></div>
+                            <div style="display:flex; flex-direction:column; gap:2px;">
+                                <div style="font-size:0.94rem; font-weight:800;">${e.title}</div>
+                                <div style="font-size:0.78rem; color:var(--text-sub);">پرداخت‌کننده: <strong>${e.payer_name}</strong></div>
                             </div>
                             <div class="item-price">${formatToman(e.amount)}</div>
                         </div>
@@ -1270,7 +1407,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 });
             } else {
                 groupHtml += `
-                    <div style="background:var(--bg-color); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:12px; text-align:center; color:var(--text-secondary); font-size:0.85rem;">
+                    <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:14px; text-align:center; color:var(--text-sub); font-size:0.86rem;">
                         هنوز هزینه‌ای در این دوره ثبت نشده است.
                     </div>
                 `;
@@ -1278,8 +1415,8 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
 
             // لیست اعضا و تراز فردی
             groupHtml += `
-                    <div style="margin-top:20px;">
-                        <div style="font-size:0.9rem; font-weight:700; margin-bottom:8px; color:var(--accent-amber);">
+                    <div style="margin-top:22px;">
+                        <div style="font-size:0.94rem; font-weight:800; margin-bottom:10px; color:var(--gold-primary);">
                             👥 وضعیت اعضا و دنگ‌ها:
                         </div>
             `;
@@ -1288,22 +1425,22 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             memberStats.forEach(m => {
                 const net = m.net || 0;
                 let netText = '۰';
-                let netCls = 'gold';
+                let netColor = 'var(--gold-primary)';
                 if (net > 0) {
                     netText = '+' + formatToman(net);
-                    netCls = 'green';
+                    netColor = 'var(--emerald-main)';
                 } else if (net < 0) {
                     netText = formatToman(net);
-                    netCls = 'red';
+                    netColor = 'var(--rose-main)';
                 }
 
                 groupHtml += `
                     <div class="item-row">
-                        <div class="item-info">
-                            <div class="item-title">${m.user?.display_name || m.user?.full_name || 'عضو'}</div>
-                            <div class="item-sub">پرداختی: ${formatToman(m.paid)} | سهم: ${formatToman(m.owed)}</div>
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <div style="font-size:0.94rem; font-weight:800;">${m.user?.display_name || m.user?.full_name || 'عضو'}</div>
+                            <div style="font-size:0.78rem; color:var(--text-sub);">پرداختی: ${formatToman(m.paid)} | سهم: ${formatToman(m.owed)}</div>
                         </div>
-                        <div class="balance-value ${netCls}" style="font-size:0.95rem;">${netText}</div>
+                        <div style="font-size:0.98rem; font-weight:800; color:${netColor};">${netText}</div>
                     </div>
                 `;
             });
@@ -1316,20 +1453,17 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             document.getElementById('activeGroupDetailCard').innerHTML = groupHtml;
         }
 
-        // انتخاب گروه
         function selectGroup(groupId) {
             appState.currentGroupId = groupId;
             renderGroupsTab();
         }
 
-        // کپی لینک دعوت
         function copyInviteLink(code) {
-            const botUsername = 'dong_yar_bot'; // نام کاربری پیش‌فرض یا فعلی
+            const botUsername = 'dong_yar_bot';
             const link = 'https://t.me/' + botUsername + '?start=join_' + code;
             copyText(link, 'لینک دعوت به گروه');
         }
 
-        // آماده‌سازی فرم ثبت هزینه
         function prepareExpenseForm() {
             const data = appState.userData;
             if (!data || !data.groups || data.groups.length === 0) return;
@@ -1340,13 +1474,11 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             onExpenseGroupChange();
         }
 
-        // تغییر گروه در فرم ثبت هزینه
         function onExpenseGroupChange() {
             const groupId = parseInt(document.getElementById('expenseGroupSelect').value);
             const group = appState.userData.groups.find(g => g.id === groupId);
             if (!group) return;
 
-            // لیست پرداخت‌کننده‌ها
             const payerSelect = document.getElementById('expensePayerSelect');
             payerSelect.innerHTML = group.members.map(m => `
                 <option value="${m.id}" ${m.id === appState.userId ? 'selected' : ''}>
@@ -1354,7 +1486,6 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 </option>
             `).join('');
 
-            // لیست اعضای سهیم
             const checklist = document.getElementById('expenseMembersChecklist');
             checklist.innerHTML = group.members.map(m => `
                 <label class="member-checkbox-label">
@@ -1366,7 +1497,6 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             updateSharePreview();
         }
 
-        // تغییر حالت ورود مبلغ
         function setExpenseMode(mode) {
             appState.expenseMode = mode;
             if (mode === 'simple') {
@@ -1383,7 +1513,6 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             updateSharePreview();
         }
 
-        // محاسبه ضرب فی × تعداد
         function calcQtyTotal() {
             const unit = parseFloat(document.getElementById('expenseUnitPriceInput').value) || 0;
             const qty = parseFloat(document.getElementById('expenseQuantityInput').value) || 0;
@@ -1392,7 +1521,6 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             updateSharePreview();
         }
 
-        // پیش‌نمایش سهم هر فرد
         function updateSharePreview() {
             let total = 0;
             if (appState.expenseMode === 'simple') {
@@ -1420,7 +1548,6 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             updateSharePreview();
         }
 
-        // ثبت هزینه جدید در سرور
         async function submitNewExpense() {
             const groupId = parseInt(document.getElementById('expenseGroupSelect').value);
             const payerId = parseInt(document.getElementById('expensePayerSelect').value);
@@ -1450,7 +1577,6 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 return;
             }
 
-            // محاسبه سهم مساوی
             const baseShare = Math.floor(amount / selectedMemberIds.length);
             let rem = amount - (baseShare * selectedMemberIds.length);
             const shares = {};
@@ -1475,6 +1601,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 });
                 const resData = await res.json();
                 if (resData.success) {
+                    triggerConfetti();
                     showToast('🎉 هزینه با موفقیت ثبت شد!');
                     document.getElementById('expenseTitleInput').value = '';
                     document.getElementById('expenseAmountInput').value = '';
@@ -1490,7 +1617,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             }
         }
 
-        // رندر لیست خرید
+        // فاکتور و لیست خرید
         function renderShoppingList() {
             const data = appState.userData;
             if (!data || !data.groups || data.groups.length === 0) return;
@@ -1519,13 +1646,13 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 total += item.total_price;
                 html += `
                     <div class="item-row">
-                        <div class="item-info">
-                            <div class="item-title">${item.item_name}</div>
-                            <div class="item-sub">
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <div style="font-size:0.94rem; font-weight:800;">${item.item_name}</div>
+                            <div style="font-size:0.78rem; color:var(--text-sub);">
                                 فی: ${formatToman(item.unit_price)} × ${item.quantity} عدد
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center;">
+                        <div style="display:flex; align-items:center; gap:8px;">
                             <div class="item-price">${formatToman(item.total_price)}</div>
                             <button class="del-btn" onclick="deleteShoppingItem(${item.id}, ${currentGroupId})">✕</button>
                         </div>
@@ -1550,7 +1677,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             const quantity = parseFloat(document.getElementById('shopItemQuantity').value) || 1;
 
             if (!name) {
-                showToast('لطفاً نام قلم را بنویسید');
+                showToast('لطفاً نام کالا را بنویسید');
                 return;
             }
             if (unitPrice <= 0) {
@@ -1603,7 +1730,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             }
         }
 
-        // گردونه غذا
+        // گردونه غذا و غذاهای اختصاصی
         function setFoodCategory(cat, btn) {
             appState.selectedFoodCategory = cat;
             document.querySelectorAll('#tab-food .segment-btn').forEach(b => b.classList.remove('active'));
@@ -1615,21 +1742,21 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             if (!container) return;
             const list = appState.customFoods || [];
             if (list.length === 0) {
-                container.innerHTML = '<div style="font-size:0.75rem; color:var(--text-muted); text-align:center; padding:8px;">هنوز غذای دلخواهی اضافه نشده است.</div>';
+                container.innerHTML = '<div style="font-size:0.78rem; color:var(--text-muted); text-align:center; padding:10px;">هنوز غذای دلخواهی اضافه نشده است.</div>';
                 return;
             }
-            let html = '<div style="display:flex; flex-direction:column; gap:6px;">';
+            let html = '<div style="display:flex; flex-direction:column; gap:8px;">';
             list.forEach(f => {
                 html += `
-                    <div class="item-row" style="padding:8px 12px; margin-bottom:0; justify-content:space-between;">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span style="font-size:1.25rem;">${f.emoji || '🍽️'}</span>
+                    <div class="item-row" style="padding:10px 14px; margin-bottom:0; justify-content:space-between;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="font-size:1.35rem;">${f.emoji || '🍽️'}</span>
                             <div style="text-align:right;">
-                                <div style="font-size:0.88rem; font-weight:700;">${f.name}</div>
-                                <div style="font-size:0.72rem; color:var(--text-secondary);">${f.description || 'پیشنهاد اختصاصی شما ✨'}</div>
+                                <div style="font-size:0.92rem; font-weight:800;">${f.name}</div>
+                                <div style="font-size:0.74rem; color:var(--text-sub);">${f.description || 'پیشنهاد اختصاصی شما ✨'}</div>
                             </div>
                         </div>
-                        <button class="del-btn" style="width:26px; height:26px; font-size:0.75rem;" onclick="deleteCustomFood(${f.id})">✕</button>
+                        <button class="del-btn" style="width:28px; height:28px; font-size:0.8rem;" onclick="deleteCustomFood(${f.id})">✕</button>
                     </div>
                 `;
             });
@@ -1662,6 +1789,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 });
                 const resData = await res.json();
                 if (resData.success) {
+                    triggerConfetti();
                     showToast('غذای جدید به گردونه اضافه شد 😋✨');
                     document.getElementById('customFoodInput').value = '';
                     await loadData();
@@ -1729,9 +1857,68 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     document.getElementById('foodEmoji').innerText = finalChoice.emoji;
                     document.getElementById('foodName').innerText = finalChoice.name;
                     document.getElementById('foodDesc').innerText = '🎉 برنده انتخاب شد: ' + finalChoice.desc;
+                    triggerConfetti();
                     if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
                 }
             }, 80);
+        }
+
+        // افکت آتش‌بازی و کانواس جشن (Confetti)
+        function triggerConfetti() {
+            const canvas = document.getElementById('confettiCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const particles = [];
+            const colors = ['#f59e0b', '#10b981', '#38bdf8', '#f43f5e', '#fef08a'];
+
+            for (let i = 0; i < 70; i++) {
+                particles.push({
+                    x: canvas.width / 2,
+                    y: canvas.height / 2,
+                    vx: (Math.random() - 0.5) * 14,
+                    vy: (Math.random() - 0.5) * 14 - 3,
+                    size: Math.random() * 7 + 4,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    alpha: 1,
+                    rotation: Math.random() * 360,
+                    vRot: (Math.random() - 0.5) * 10
+                });
+            }
+
+            let animationFrame;
+            function render() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                let alive = false;
+                particles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.35; // گرانش
+                    p.alpha -= 0.018;
+                    p.rotation += p.vRot;
+
+                    if (p.alpha > 0) {
+                        alive = true;
+                        ctx.save();
+                        ctx.globalAlpha = p.alpha;
+                        ctx.translate(p.x, p.y);
+                        ctx.rotate(p.rotation * Math.PI / 180);
+                        ctx.fillStyle = p.color;
+                        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                        ctx.restore();
+                    }
+                });
+
+                if (alive) {
+                    animationFrame = requestAnimationFrame(render);
+                } else {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    cancelAnimationFrame(animationFrame);
+                }
+            }
+            render();
         }
 
         // افزودن کارت بانکی
@@ -1751,6 +1938,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 });
                 const resData = await res.json();
                 if (resData.success) {
+                    triggerConfetti();
                     showToast('کارت بانکی اضافه شد 💳');
                     await loadData();
                 } else {
@@ -1761,15 +1949,15 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             }
         }
 
-        // تعویض حساب کاربری در حالت مرورگر
+        // سوئیچ حساب کاربری در مرورگر
         async function promptSwitchUser() {
             try {
                 const res = await fetch('/api/app/users');
                 const users = await res.json();
                 if (!users || users.length === 0) return;
-                let msg = 'شناسه کاربر خود را انتخاب کنید:\\n';
+                let msg = 'شناسه کاربر خود را انتخاب کنید:\n';
                 users.forEach(u => {
-                    msg += u.id + ': ' + (u.calling_name || u.full_name) + '\\n';
+                    msg += u.id + ': ' + (u.calling_name || u.full_name) + '\n';
                 });
                 const chosen = prompt(msg, appState.userId || users[0].id);
                 if (chosen) {
@@ -1779,7 +1967,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             } catch (e) {}
         }
 
-        // شروع برنامه
+        // اجرای شروع اولیه
         window.addEventListener('DOMContentLoaded', () => {
             loadData();
         });
@@ -1810,14 +1998,13 @@ async def api_users_handler(request: web.Request) -> web.Response:
 
 
 async def api_user_data_handler(request: web.Request) -> web.Response:
-    """دریافت بسته کامل اطلاعات کاربر برای مینی‌اپ (پروفایل، گروه‌ها، ترازها، کارت‌ها)"""
+    """دریافت بسته کامل اطلاعات کاربر برای مینی‌اپ (پروفایل، گروه‌ها، ترازها، کارت‌ها، غذاها)"""
     try:
         user_id_param = request.query.get("user_id")
         user_id = int(user_id_param) if user_id_param and user_id_param.isdigit() else None
 
         async with aiosqlite.connect(DB_PATH) as conn:
             conn.row_factory = aiosqlite.Row
-            # اگر کاربری داده نشده بود، اولین کاربر موجود را پیدا کن
             if not user_id:
                 async with conn.execute("SELECT id FROM users ORDER BY id ASC LIMIT 1") as cur:
                     row = await cur.fetchone()
