@@ -91,3 +91,36 @@ def mention_user(user_id: int, full_name: str, username: str | None = None) -> s
     if username:
         return f'<a href="https://t.me/{username}">{clean_name}</a>'
     return f'<a href="tg://user?id={user_id}">{clean_name}</a>'
+
+
+def parse_quantity(text: str | None) -> float | None:
+    """
+    تبدیل متن تعداد یا مقدار به عدد اعشاری یا صحیح مثبت.
+    پشتیبانی از ارقام فارسی و انگلیسی، ممیز و اعشار (مانند 4 یا ۱.۵ یا ۲٫۵).
+    """
+    if not text:
+        return None
+    cleaned = str(text).strip()
+    if cleaned.startswith("-") or "منفی" in cleaned:
+        return None
+    for i, char in enumerate(PERSIAN_DIGITS):
+        cleaned = cleaned.replace(char, str(i))
+    for i, char in enumerate(ARABIC_DIGITS):
+        cleaned = cleaned.replace(char, str(i))
+    cleaned = cleaned.replace("٫", ".").replace("/", ".").replace("،", "")
+    for word in ["عدد", "بسته", "کیلوگرم", "کیلو", "دونه", "تا", "قوطی", "بطری", "جعبه"]:
+        cleaned = re.sub(rf"\b{word}\b|{word}", "", cleaned).strip()
+    try:
+        val = float(cleaned)
+        if val > 0:
+            return val
+    except ValueError:
+        pass
+    return None
+
+
+def format_quantity(qty: float) -> str:
+    """فرمت‌بندی زیبای تعداد یا مقدار"""
+    if qty.is_integer():
+        return f"{int(qty)} عدد"
+    return f"{qty:g}"

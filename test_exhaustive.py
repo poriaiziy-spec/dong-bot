@@ -17,7 +17,7 @@ if sys.platform.startswith("win"):
 import database as db
 import keyboards as kb
 from calculator import calculate_group_balances
-from helpers import clean_amount_input, format_amount, safe, mention_user
+from helpers import clean_amount_input, format_amount, safe, mention_user, parse_quantity, format_quantity
 from bank_utils import clean_card_input, format_card_number, detect_bank_name
 import tones
 from random_names import FUNNY_GROUP_NAMES, get_random_group_name, get_random_member_nickname
@@ -52,7 +52,19 @@ async def test_all_scenarios():
     assert clean_amount_input("1,250,000 تومان") == 1250000
     assert clean_amount_input("۵۰۰ هزار") == 500000
     assert clean_amount_input("500k") == 500000
-    print("✅ تمامی تست‌های ورودی مبلغ (شامل اعداد منفی، اعشاری، ضرایب k/m و کاراکترهای عجیب) پاس شدند.")
+
+    # تست اعتبارسنجی تعداد و مقادیر اقلام فاکتور خرید
+    assert parse_quantity("4") == 4.0
+    assert parse_quantity("۴ عدد") == 4.0
+    assert parse_quantity("1.5 کیلو") == 1.5
+    assert parse_quantity("۱.۵") == 1.5
+    assert parse_quantity("۲٫۵") == 2.5
+    assert parse_quantity("۰") is None
+    assert parse_quantity("-3") is None
+    assert parse_quantity("سلام") is None
+    assert format_quantity(4.0) == "4 عدد"
+    assert format_quantity(1.5) == "1.5"
+    print("✅ تمامی تست‌های ورودی مبلغ و تعداد اقلام لیست خرید پاس شدند.")
 
     # -------------------------------------------------------------
     # سناریو ۲: تست شماره کارت بانکی در شرایط غیرعادی
@@ -303,7 +315,31 @@ async def test_all_scenarios():
     del_auth = await db.delete_group(grp_id, creator_id)
     assert del_auth is True
     assert (await db.get_group_by_id(grp_id)) is None
-    print("✅ آزمون چرخه گروه، تسویه حساب‌ها و مجوزهای امنیتی سرگروه پاس شد.")
+
+    # آزمون اقلام فاکتور و لیست خرید با محاسبه خودکار قیمت کل
+    s_grp, _ = await db.create_group("تست فاکتور خرید 🛒", creator_id)
+    it1_id = await db.add_shopping_item(s_grp, creator_id, "چیپس", 35000, 4)
+    it2_id = await db.add_shopping_item(s_grp, creator_id, "گوشت", 500000, 1.5)
+    items_list = await db.get_group_shopping_items(s_grp)
+    assert len(items_list) == 2
+    assert items_list[0]["unit_price"] == 35000
+    assert items_list[0]["quantity"] == 4.0
+    assert items_list[0]["total_price"] == 140000  # ۳۵ هزار ضرب در ۴
+    assert items_list[1]["unit_price"] == 500000
+    assert items_list[1]["quantity"] == 1.5
+    assert items_list[1]["total_price"] == 750000  # ۵۰۰ هزار ضرب در ۱.۵
+    
+    # حذف یک قلم از لیست
+    del_it_res = await db.delete_shopping_item(it1_id, s_grp)
+    assert del_it_res is True
+    assert len(await db.get_group_shopping_items(s_grp)) == 1
+
+    # خالی کردن کل فاکتور
+    clr_res = await db.clear_group_shopping_items(s_grp)
+    assert clr_res == 1
+    assert len(await db.get_group_shopping_items(s_grp)) == 0
+    await db.delete_group(s_grp, creator_id)
+    print("✅ آزمون چرخه گروه، تسویه حساب‌ها و فاکتور ساز اقلام خرید پاس شد.")
 
     # -------------------------------------------------------------
     # سناریو ۷: ممیزی دقیق طول تمام دکمه‌های اینلاین تلگرام (سقف ۶۴ بایت)
@@ -342,7 +378,11 @@ async def test_all_scenarios():
         kb.single_expense_keyboard(BIG_EXP, BIG_GRP, can_edit=True),
         kb.cancel_keyboard(BIG_GRP),
         kb.food_picker_keyboard(BIG_GRP, 3),
-        kb.food_result_keyboard(BIG_GRP)
+        kb.food_result_keyboard(BIG_GRP),
+        kb.shopping_list_keyboard(BIG_GRP, has_items=False),
+        kb.shopping_list_keyboard(BIG_GRP, has_items=True),
+        kb.shopping_del_items_keyboard([{"id": BIG_EXP, "item_name": "چیپس مخصوص", "total_price": BIG_AMT}], BIG_GRP),
+        kb.shopping_clear_confirm_keyboard(BIG_GRP)
     ]
 
     # همچنین کلیدهای داینامیک درون reports.py و motivational.py

@@ -136,6 +136,23 @@ async def init_db():
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id);")
 
+        # جدول اقلام لیست خرید و فاکتور ساز
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS shopping_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                item_name TEXT NOT NULL,
+                unit_price INTEGER NOT NULL,
+                quantity REAL NOT NULL DEFAULT 1,
+                total_price INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_shopping_items_group ON shopping_items(group_id);")
+
         await db.commit()
     
     # بازیابی خودکار داده‌ها در سرورهای ابری
@@ -848,5 +865,51 @@ async def cleanup_chat_history(bot, user_id: int, current_message_id: int | None
 
     if keep_message_id:
         await record_chat_message(user_id, keep_message_id)
+
+
+async def add_shopping_item(group_id: int, user_id: int, item_name: str, unit_price: int, quantity: float) -> int:
+    """افزودن قلم به لیست خرید گروه با محاسبه خودکار قیمت کل"""
+    total_price = int(round(unit_price * quantity))
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("""
+            INSERT INTO shopping_items (group_id, user_id, item_name, unit_price, quantity, total_price)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (group_id, user_id, item_name.strip(), unit_price, quantity, total_price))
+        item_id = cursor.lastrowid
+        await db.commit()
+        schedule_cloud_backup()
+        return item_id
+
+
+async def get_group_shopping_items(group_id: int) -> list[dict]:
+    """دریافت تمام اقلام لیست خرید گروه به همراه نام ثبت‌کننده"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT s.*, u.full_name, u.username, u.calling_name
+            FROM shopping_items s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.group_id = ?
+            ORDER BY s.id ASC
+        """, (group_id,)) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+async def delete_shopping_item(item_id: int, group_id: int) -> bool:
+    """حذف یک قلم از لیست خرید"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("DELETE FROM shopping_items WHERE id = ? AND group_id = ?", (item_id, group_id))
+        await db.commit()
+        schedule_cloud_backup()
+        return cursor.rowcount > 0
+
+
+async def clear_group_shopping_items(group_id: int) -> int:
+    """پاک کردن تمام اقلام لیست خرید یک گروه"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("DELETE FROM shopping_items WHERE group_id = ?", (group_id,))
+        await db.commit()
+        schedule_cloud_backup()
+        return cursor.rowcount
 
 

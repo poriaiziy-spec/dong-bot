@@ -59,7 +59,10 @@ def group_expenses_section_keyboard(group_id: int) -> InlineKeyboardMarkup:
     """بخش ۱: ثبت و مدیریت هزینه‌ها"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="💸 ثبت هزینه جدید", callback_data=f"exp:add:{group_id}")
+            InlineKeyboardButton(text="💸 ثبت سریع هزینه کلی", callback_data=f"exp:add:{group_id}")
+        ],
+        [
+            InlineKeyboardButton(text="🛒 فاکتور و لیست خرید اقلام", callback_data=f"shop:view:{group_id}")
         ],
         [
             InlineKeyboardButton(text="📜 تاریخچه و ویرایش هزینه‌ها", callback_data=f"grp:history:{group_id}")
@@ -67,6 +70,53 @@ def group_expenses_section_keyboard(group_id: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text="🔙 بازگشت به منوی دورهمی", callback_data=f"grp:view:{group_id}")
         ]
+    ])
+
+
+def shopping_list_keyboard(group_id: int, has_items: bool = False) -> InlineKeyboardMarkup:
+    """کیبورد صفحه اصلی لیست خرید و فاکتور ساز"""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="➕ افزودن قلم جدید", callback_data=f"shop:add:{group_id}")
+        ]
+    ]
+    if has_items:
+        keyboard.append([
+            InlineKeyboardButton(text="💾 ثبت به عنوان هزینه گروه (دنگ)", callback_data=f"shop:to_exp:{group_id}")
+        ])
+        keyboard.append([
+            InlineKeyboardButton(text="🗑️ حذف یک قلم", callback_data=f"shop:del_menu:{group_id}"),
+            InlineKeyboardButton(text="🧹 خالی کردن لیست", callback_data=f"shop:clear_confirm:{group_id}")
+        ])
+    keyboard.append([
+        InlineKeyboardButton(text="🔙 بازگشت به بخش هزینه‌ها", callback_data=f"grp:sec_exp:{group_id}")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def shopping_del_items_keyboard(items: list[dict], group_id: int) -> InlineKeyboardMarkup:
+    """کیبورد انتخاب قلم جهت حذف"""
+    keyboard = []
+    for it in items[:15]:
+        total_str = f"{it['total_price']:,} ت"
+        name_short = it['item_name'][:18]
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"❌ {name_short} ({total_str})",
+                callback_data=f"shop:del_do:{it['id']}:{group_id}"
+            )
+        ])
+    keyboard.append([
+        InlineKeyboardButton(text="🔙 بازگشت به لیست خرید", callback_data=f"shop:view:{group_id}")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def shopping_clear_confirm_keyboard(group_id: int) -> InlineKeyboardMarkup:
+    """تأییدیه خالی کردن تمام اقلام لیست خرید"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚠️ بله، کل لیست پاک شود", callback_data=f"shop:clear_do:{group_id}")],
+        [InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data=f"shop:view:{group_id}")]
     ])
 
 

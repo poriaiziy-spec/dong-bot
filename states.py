@@ -23,3 +23,8 @@ class NamePromptStates(StatesGroup):
 class ExpenseEditStates(StatesGroup):
     waiting_for_new_amount = State()
 
+class ShoppingItemStates(StatesGroup):
+    waiting_for_name = State()
+    waiting_for_unit_price = State()
+    waiting_for_quantity = State()
+

@@ -198,6 +198,8 @@ async def save_expense_final(callback: CallbackQuery, state: FSMContext):
         shares_dict[uid] = base_share + (remainder if i == 0 else 0)
         
     await db.add_expense(group_id, payer_id, title, amount, shares_dict)
+    if data.get("from_shopping_list"):
+        await db.clear_group_shopping_items(group_id)
     await state.clear()
     
     members = await db.get_group_members(group_id)
