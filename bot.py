@@ -24,6 +24,7 @@ from database import init_db
 from handlers import setup_routers
 from motivational import start_daily_quote_scheduler
 from cloud_db_sync import start_periodic_cloud_backup, backup_to_cloud
+from webapp import setup_webapp_routes
 
 # تنظیم لاگ‌ها
 logging.basicConfig(
@@ -118,6 +119,8 @@ async def start_health_check_server():
     app.router.add_get("/health", lambda req: web.Response(text="OK"))
     app.router.add_get("/api/status", status_api_handler)
     app.router.add_get("/api/restore", restore_api_handler)
+    # اتصال مسیرها و API های مینی‌اپ تلگرام
+    setup_webapp_routes(app)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
@@ -150,6 +153,7 @@ async def set_bot_commands(bot: Bot):
     """تنظیم منوی دستورات ربات در تلگرام"""
     commands = [
         BotCommand(command="start", description="🏠 شروع و منوی اصلی"),
+        BotCommand(command="app", description="📱 باز کردن مینی‌اپ کافه دنگ"),
         BotCommand(command="myname", description="👤 مشاهده و ویرایش نام من"),
         BotCommand(command="groups", description="👥 گروه‌های من"),
         BotCommand(command="newgroup", description="➕ ساخت گروه دنگ جدید"),
@@ -211,8 +215,17 @@ async def main():
         await bot.set_my_name(name="کافه دنگ ☕")
         await bot.set_my_description(description="☕ به کافه دنگ خوش اومدی قشنگم!\nمن همراه و پارتنر صمیمی شما برای حساب‌کتاب دنگ‌ها، تسهیم دقیق هزینه‌ها، یادآوری و دورهمی‌های دلنشین هستم ❤️")
         await bot.set_my_short_description(short_description="کافه دنگ ☕❤️ | پارتنر صمیمی شما در مدیریت دنگ و دورهمی‌ها")
+        # تنظیم دکمه منوی چت برای باز کردن مستقیم مینی‌اپ
+        from aiogram.types import MenuButtonWebApp, WebAppInfo
+        from config import WEB_APP_URL
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="📱 کافه دنگ",
+                web_app=WebAppInfo(url=f"{WEB_APP_URL}/app")
+            )
+        )
     except Exception as e:
-        logger.warning(f"عدم امکان تنظیم دستورات یا نام ربات در منو: {e}")
+        logger.warning(f"عدم امکان تنظیم دستورات یا منوی وب‌اپ: {e}")
 
     logger.info("🚀 ربات کافه دنگ آماده به کار است و شروع به کار کرد...")
     

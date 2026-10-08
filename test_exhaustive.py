@@ -401,7 +401,9 @@ async def test_all_scenarios():
         kb.shopping_list_keyboard(BIG_GRP, has_items=True),
         kb.shopping_del_items_keyboard([{"id": BIG_EXP, "item_name": "چیپس مخصوص", "total_price": BIG_AMT}], BIG_GRP),
         kb.shopping_clear_confirm_keyboard(BIG_GRP),
-        kb.expense_amount_choice_keyboard(BIG_GRP)
+        kb.expense_amount_choice_keyboard(BIG_GRP),
+        kb.miniapp_keyboard(),
+        kb.miniapp_keyboard(BIG_GRP)
     ]
 
     # همچنین کلیدهای داینامیک درون reports.py و motivational.py
@@ -444,6 +446,97 @@ async def test_all_scenarios():
                     assert byte_len <= 64, f"❌ خطای تلگرام! طول callback_data بیشتر از ۶۴ بایت است: '{btn.callback_data}' ({byte_len} بایت)"
 
     print(f"✅ تمام {total_buttons_tested} دکمه اینلاین تست شدند و همگی کمتر از ۶۴ بایت بودند.")
+
+    # -------------------------------------------------------------
+    # سناریو ۸: آزمون وب‌سرور مینی‌اپ و اندپوئینت‌های API
+    # -------------------------------------------------------------
+    print("\n--- [بخش ۸] آزمون روت‌ها و API های مینی‌اپ تلگرام ---")
+    import webapp
+    from aiohttp.test_utils import TestClient, TestServer
+    from aiohttp import web
+    
+    app_test = web.Application()
+    webapp.setup_webapp_routes(app_test)
+    
+    client = TestClient(TestServer(app_test))
+    await client.start_server()
+    
+    try:
+        # ۱. آزمون رندر صفحه وب‌اپ
+        resp_page = await client.get("/app")
+        assert resp_page.status == 200
+        html_text = await resp_page.text()
+        assert "کافه دنگ" in html_text
+        assert "telegram-web-app.js" in html_text
+        assert "Vazirmatn" in html_text
+        
+        # ۲. آزمون لیست کاربران
+        resp_users = await client.get("/api/app/users")
+        assert resp_users.status == 200
+        users_json = await resp_users.json()
+        assert isinstance(users_json, list)
+        
+        # ۳. آزمون دریافت اطلاعات کاربر و داشبورد
+        resp_data = await client.get(f"/api/app/user_data?user_id={user_id}")
+        assert resp_data.status == 200
+        data_json = await resp_data.json()
+        assert "user" in data_json
+        assert "cards" in data_json
+        assert "groups" in data_json
+        assert "overall_stats" in data_json
+        assert "daily_quote" in data_json
+        
+        # ۴. آزمون ثبت هزینه از طریق مینی‌اپ
+        t_grp_id, _ = await db.create_group("گروه وب‌اپ ☕", user_id)
+        u2_id = 777002
+        await db.upsert_user(u2_id, "ali_test", "علی علوی", "علی")
+        await db.add_group_member(t_grp_id, u2_id)
+        
+        exp_post = await client.post("/api/app/add_expense", json={
+            "group_id": t_grp_id,
+            "payer_id": user_id,
+            "title": "پیتزا و نوشابه دورهمی",
+            "amount": 200000,
+            "shares": {str(user_id): 100000, str(u2_id): 100000}
+        })
+        assert exp_post.status == 200
+        exp_json = await exp_post.json()
+        assert exp_json["success"] is True
+        assert exp_json["expense_id"] > 0
+        
+        # ۵. آزمون فاکتور و قلم خرید مینی‌اپ
+        shop_post = await client.post("/api/app/add_shopping_item", json={
+            "group_id": t_grp_id,
+            "user_id": user_id,
+            "item_name": "سیب‌زمینی سرخ‌کرده",
+            "unit_price": 45000,
+            "quantity": 2
+        })
+        assert shop_post.status == 200
+        shop_json = await shop_post.json()
+        assert shop_json["success"] is True
+        shop_it_id = shop_json["item_id"]
+        
+        # حذف قلم خرید از مینی‌اپ
+        shop_del = await client.post("/api/app/delete_shopping_item", json={
+            "item_id": shop_it_id,
+            "group_id": t_grp_id
+        })
+        assert shop_del.status == 200
+        assert (await shop_del.json())["success"] is True
+        
+        # ۶. آزمون ثبت کارت از مینی‌اپ
+        card_post = await client.post("/api/app/add_card", json={
+            "user_id": user_id,
+            "card_number": "5022291012345678",
+            "bank_name": "پاسارگاد"
+        })
+        assert card_post.status == 200
+        assert (await card_post.json())["success"] is True
+        
+        print("✅ تمامی روت‌ها و متدهای API مینی‌اپ با موفقیت ۱۰۰٪ پاس شدند.")
+    finally:
+        await client.close()
 
     # پاکسازی فایل موقت تست
     if os.path.exists(test_db_file):

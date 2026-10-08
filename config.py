@@ -24,3 +24,6 @@ ADMIN_IDS = [int(x.strip()) for x in admin_env.split(",") if x.strip().isdigit()
 # کلید رمزنگاری سرتاسری دیتابیس در فضای ابری
 ENCRYPTION_SECRET = os.getenv("DB_ENCRYPTION_KEY") or BOT_TOKEN or "dong_bot_master_vault_key_2026"
 
+# آدرس سرور وب و مینی‌اپ تلگرام (HTTPS برای وب‌اپلیکیشن تلگرام الزامی است)
+WEB_APP_URL = (os.getenv("WEB_APP_URL") or os.getenv("RENDER_EXTERNAL_URL") or "https://dong-bot-1.onrender.com").rstrip("/")
+

@@ -293,6 +293,35 @@ async def handle_cancel(message: Message, state: FSMContext):
         pass
 
 
+@router.message(Command("app", "miniapp"))
+async def handle_miniapp_command(message: Message, state: FSMContext):
+    """باز کردن مینی‌اپ اختصاصی کافه دنگ"""
+    await state.clear()
+    user = message.from_user
+    if not user:
+        return
+    await db.cleanup_chat_history(message.bot, user.id)
+    calling_name = await db.get_user_calling_name(user.id) or "جان دلم"
+    text = (
+        f"📱 <b>مینی‌اپ اختصاصی کافه دنگ ☕✨</b>\n\n"
+        f"سلام <b>{safe(calling_name)}</b> قشنگم! برای اینکه همه‌چیز رو با گرافیک دلنشین و توی یک نگاه ببینی، "
+        f"روی دکمه زیر بزن تا مینی‌اپ اختصاصی کافه دنگ برات باز بشه ❤️\n\n"
+        f"✨ <b>امکانات مینی‌اپ:</b>\n"
+        f"• 📊 داشبورد زنده طلبکاری‌ها و بدهکاری‌ها\n"
+        f"• 💳 دسترسی و کپی سریع شماره کارت‌ها\n"
+        f"• ⚖️ مشاهده فرمول تسویه حساب بدهی‌ها\n"
+        f"• 💸 ثبت سریع و مستقیم هزینه با تسهیم هوشمند\n"
+        f"• 🛒 فاکتور و لیست خرید با ضرب فی در تعداد\n"
+        f"• 🍕 گردونه شانس چی بخوریم دورهمی!"
+    )
+    sent = await message.answer(text, parse_mode="HTML", reply_markup=kb.miniapp_keyboard())
+    await db.record_chat_message(user.id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+
 @router.callback_query(F.data == "nav:main")
 async def handle_nav_main(callback: CallbackQuery, state: FSMContext):
     await state.clear()

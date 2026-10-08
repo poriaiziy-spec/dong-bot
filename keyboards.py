@@ -1,8 +1,12 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from config import WEB_APP_URL
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
-    """منوی اصلی ربات"""
+    """منوی اصلی ربات به همراه دکمه ورود به مینی‌اپ"""
     keyboard = [
+        [
+            InlineKeyboardButton(text="📱 مینی‌اپ کافه دنگ ☕✨", web_app=WebAppInfo(url=f"{WEB_APP_URL}/app"))
+        ],
         [
             InlineKeyboardButton(text="➕ ایجاد گروه دنگ جدید", callback_data="nav:new_group"),
             InlineKeyboardButton(text="👥 گروه‌های من", callback_data="nav:my_groups")
@@ -16,6 +20,21 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def miniapp_keyboard(group_id: int | None = None) -> InlineKeyboardMarkup:
+    """کیبورد اختصاصی باز کردن مینی‌اپ"""
+    url = f"{WEB_APP_URL}/app"
+    if group_id:
+        url += f"?group_id={group_id}"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🚀 ورود به مینی‌اپ کافه دنگ ☕", web_app=WebAppInfo(url=url))
+        ],
+        [
+            InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="nav:main")
+        ]
+    ])
 
 
 def groups_list_keyboard(groups: list[dict]) -> InlineKeyboardMarkup:
@@ -38,8 +57,11 @@ def groups_list_keyboard(groups: list[dict]) -> InlineKeyboardMarkup:
 
 
 def group_dashboard_keyboard(group_id: int, is_creator: bool = False) -> InlineKeyboardMarkup:
-    """داشبورد اصلی گروه به صورت شبکه ۲ در ۲ دسته‌بندی شده"""
+    """داشبورد اصلی گروه به صورت شبکه ۲ در ۲ دسته‌بندی شده همراه با مینی‌اپ گروه"""
     keyboard = [
+        [
+            InlineKeyboardButton(text="📱 باز کردن مینی‌اپ این گروه ☕", web_app=WebAppInfo(url=f"{WEB_APP_URL}/app?group_id={group_id}"))
+        ],
         [
             InlineKeyboardButton(text="💰 هزینه‌ها و دنگ", callback_data=f"grp:sec_exp:{group_id}"),
             InlineKeyboardButton(text="📊 حساب‌ها و تسویه", callback_data=f"grp:sec_settle:{group_id}")
