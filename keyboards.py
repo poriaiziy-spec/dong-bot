@@ -67,7 +67,10 @@ def group_dashboard_keyboard(group_id: int, is_creator: bool = False) -> InlineK
             InlineKeyboardButton(text="📊 حساب‌ها و تسویه", callback_data=f"grp:sec_settle:{group_id}")
         ],
         [
-            InlineKeyboardButton(text="🍕 گردونه غذا", callback_data=f"food:start:{group_id}"),
+            InlineKeyboardButton(text="🛒 خریدهای خونه / لیست مایحتاج", callback_data=f"shop:view:{group_id}"),
+            InlineKeyboardButton(text="🍕 گردونه غذا", callback_data=f"food:start:{group_id}")
+        ],
+        [
             InlineKeyboardButton(text="⚙️ تنظیمات و مدیریت", callback_data=f"grp:sec_settings:{group_id}")
         ],
         [
@@ -84,7 +87,7 @@ def group_expenses_section_keyboard(group_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="💸 ثبت سریع هزینه کلی", callback_data=f"exp:add:{group_id}")
         ],
         [
-            InlineKeyboardButton(text="🛒 فاکتور و لیست خرید اقلام", callback_data=f"shop:view:{group_id}")
+            InlineKeyboardButton(text="🛒 خریدهای خونه و لیست مایحتاج", callback_data=f"shop:view:{group_id}")
         ],
         [
             InlineKeyboardButton(text="📜 تاریخچه و ویرایش هزینه‌ها", callback_data=f"grp:history:{group_id}")
@@ -96,22 +99,59 @@ def group_expenses_section_keyboard(group_id: int) -> InlineKeyboardMarkup:
 
 
 def shopping_list_keyboard(group_id: int, has_items: bool = False) -> InlineKeyboardMarkup:
-    """کیبورد صفحه اصلی لیست خرید و فاکتور ساز"""
+    """کیبورد صفحه اصلی لیست خرید و خریدهای خونه"""
     keyboard = [
         [
-            InlineKeyboardButton(text="➕ افزودن قلم جدید", callback_data=f"shop:add:{group_id}")
+            InlineKeyboardButton(text="➕ افزودن قلم به لیست خرید", callback_data=f"shop:add:{group_id}")
         ]
     ]
     if has_items:
         keyboard.append([
-            InlineKeyboardButton(text="💾 ثبت به عنوان هزینه گروه (دنگ)", callback_data=f"shop:to_exp:{group_id}")
+            InlineKeyboardButton(text="🛍️ من خریدم (انتخاب و ثبت دنگ)", callback_data=f"shop:bmenu:{group_id}")
         ])
         keyboard.append([
-            InlineKeyboardButton(text="🗑️ حذف یک قلم", callback_data=f"shop:del_menu:{group_id}"),
+            InlineKeyboardButton(text="💾 ثبت یکجای کل فاکتور", callback_data=f"shop:to_exp:{group_id}")
+        ])
+        keyboard.append([
+            InlineKeyboardButton(text="🗑️ حذف قلم", callback_data=f"shop:del_menu:{group_id}"),
             InlineKeyboardButton(text="🧹 خالی کردن لیست", callback_data=f"shop:clear_confirm:{group_id}")
         ])
     keyboard.append([
-        InlineKeyboardButton(text="🔙 بازگشت به بخش هزینه‌ها", callback_data=f"grp:sec_exp:{group_id}")
+        InlineKeyboardButton(text="🔙 بازگشت به منوی دورهمی", callback_data=f"grp:view:{group_id}")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def shopping_buy_items_keyboard(items: list[dict], group_id: int, selected_ids: set[int]) -> InlineKeyboardMarkup:
+    """کیبورد چندانتخابی اقلام خریداری‌شده برای تبدیل به دنگ"""
+    keyboard = []
+    for it in items[:15]:
+        iid = it["id"]
+        is_sel = iid in selected_ids
+        icon = "✅" if is_sel else "⬜"
+        name_short = it["item_name"][:20]
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{icon} {name_short}",
+                callback_data=f"shop:btog:{group_id}:{iid}"
+            )
+        ])
+    
+    sel_count = len(selected_ids)
+    if sel_count > 0:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"➡️ تایید و ثبت مبلغ ({sel_count} قلم)",
+                callback_data=f"shop:bconf:{group_id}"
+            )
+        ])
+    
+    keyboard.append([
+        InlineKeyboardButton(text="🔘 انتخاب همه", callback_data=f"shop:ball:{group_id}"),
+        InlineKeyboardButton(text="🔄 پاک کردن", callback_data=f"shop:bnone:{group_id}")
+    ])
+    keyboard.append([
+        InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data=f"shop:view:{group_id}")
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 

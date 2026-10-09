@@ -338,15 +338,23 @@ async def test_all_scenarios():
     s_grp, _ = await db.create_group("تست فاکتور خرید 🛒", creator_id)
     it1_id = await db.add_shopping_item(s_grp, creator_id, "چیپس", 35000, 4)
     it2_id = await db.add_shopping_item(s_grp, creator_id, "گوشت", 500000, 1.5)
+    it3_id = await db.add_shopping_item(s_grp, creator_id, "شیر", 0, 2)  # قلم لیست مایحتاج بدون قیمت
     items_list = await db.get_group_shopping_items(s_grp)
-    assert len(items_list) == 2
+    assert len(items_list) == 3
     assert items_list[0]["unit_price"] == 35000
     assert items_list[0]["quantity"] == 4.0
     assert items_list[0]["total_price"] == 140000  # ۳۵ هزار ضرب در ۴
     assert items_list[1]["unit_price"] == 500000
     assert items_list[1]["quantity"] == 1.5
     assert items_list[1]["total_price"] == 750000  # ۵۰۰ هزار ضرب در ۱.۵
+    assert items_list[2]["unit_price"] == 0
+    assert items_list[2]["total_price"] == 0
     
+    # تست علامت‌گذاری یا حذف چندتایی
+    del_multi = await db.delete_shopping_items([it3_id], s_grp)
+    assert del_multi == 1
+    assert len(await db.get_group_shopping_items(s_grp)) == 2
+
     # حذف یک قلم از لیست
     del_it_res = await db.delete_shopping_item(it1_id, s_grp)
     assert del_it_res is True
@@ -399,6 +407,7 @@ async def test_all_scenarios():
         kb.food_result_keyboard(BIG_GRP),
         kb.shopping_list_keyboard(BIG_GRP, has_items=False),
         kb.shopping_list_keyboard(BIG_GRP, has_items=True),
+        kb.shopping_buy_items_keyboard([{"id": BIG_EXP, "item_name": "شیر ۲ تا"}], BIG_GRP, {BIG_EXP}),
         kb.shopping_del_items_keyboard([{"id": BIG_EXP, "item_name": "چیپس مخصوص", "total_price": BIG_AMT}], BIG_GRP),
         kb.shopping_clear_confirm_keyboard(BIG_GRP),
         kb.expense_amount_choice_keyboard(BIG_GRP),

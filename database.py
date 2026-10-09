@@ -143,15 +143,26 @@ async def init_db():
                 group_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL,
                 item_name TEXT NOT NULL,
-                unit_price INTEGER NOT NULL,
+                unit_price INTEGER NOT NULL DEFAULT 0,
                 quantity REAL NOT NULL DEFAULT 1,
-                total_price INTEGER NOT NULL,
+                total_price INTEGER NOT NULL DEFAULT 0,
+                is_bought INTEGER DEFAULT 0,
+                buyer_id INTEGER DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
             )
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_shopping_items_group ON shopping_items(group_id);")
+
+        try:
+            await db.execute("ALTER TABLE shopping_items ADD COLUMN is_bought INTEGER DEFAULT 0;")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE shopping_items ADD COLUMN buyer_id INTEGER DEFAULT NULL;")
+        except Exception:
+            pass
 
         # جدول غذاهای اختصاصی گردونه چی بخوریم
         await db.execute("""
@@ -884,13 +895,15 @@ async def cleanup_chat_history(bot, user_id: int, current_message_id: int | None
         await record_chat_message(user_id, keep_message_id)
 
 
-async def add_shopping_item(group_id: int, user_id: int, item_name: str, unit_price: int, quantity: float) -> int:
+async def add_shopping_item(group_id: int, user_id: int, item_name: str, unit_price: int = 0, quantity: float = 1.0) -> int:
     """افزودن قلم به لیست خرید گروه با محاسبه خودکار قیمت کل"""
+    unit_price = int(unit_price or 0)
+    quantity = float(quantity or 1.0)
     total_price = int(round(unit_price * quantity))
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("""
-            INSERT INTO shopping_items (group_id, user_id, item_name, unit_price, quantity, total_price)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO shopping_items (group_id, user_id, item_name, unit_price, quantity, total_price, is_bought)
+            VALUES (?, ?, ?, ?, ?, ?, 0)
         """, (group_id, user_id, item_name.strip(), unit_price, quantity, total_price))
         item_id = cursor.lastrowid
         await db.commit()
@@ -898,17 +911,20 @@ async def add_shopping_item(group_id: int, user_id: int, item_name: str, unit_pr
         return item_id
 
 
-async def get_group_shopping_items(group_id: int) -> list[dict]:
+async def get_group_shopping_items(group_id: int, include_bought: bool = False) -> list[dict]:
     """دریافت تمام اقلام لیست خرید گروه به همراه نام ثبت‌کننده"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("""
+        sql = """
             SELECT s.*, u.full_name, u.username, u.calling_name
             FROM shopping_items s
             JOIN users u ON s.user_id = u.id
             WHERE s.group_id = ?
-            ORDER BY s.id ASC
-        """, (group_id,)) as cursor:
+        """
+        if not include_bought:
+            sql += " AND (s.is_bought = 0 OR s.is_bought IS NULL)"
+        sql += " ORDER BY s.id ASC"
+        async with db.execute(sql, (group_id,)) as cursor:
             return [dict(r) for r in await cursor.fetchall()]
 
 
@@ -919,6 +935,34 @@ async def delete_shopping_item(item_id: int, group_id: int) -> bool:
         await db.commit()
         schedule_cloud_backup()
         return cursor.rowcount > 0
+
+
+async def delete_shopping_items(item_ids: list[int], group_id: int) -> int:
+    """حذف چندین قلم از لیست خرید"""
+    if not item_ids:
+        return 0
+    async with aiosqlite.connect(DB_PATH) as db:
+        placeholders = ",".join("?" for _ in item_ids)
+        cursor = await db.execute(f"DELETE FROM shopping_items WHERE group_id = ? AND id IN ({placeholders})", [group_id] + list(item_ids))
+        await db.commit()
+        schedule_cloud_backup()
+        return cursor.rowcount
+
+
+async def mark_shopping_items_bought(item_ids: list[int], buyer_id: int) -> int:
+    """علامت‌گذاری اقلام به عنوان خریداری شده"""
+    if not item_ids:
+        return 0
+    async with aiosqlite.connect(DB_PATH) as db:
+        placeholders = ",".join("?" for _ in item_ids)
+        cursor = await db.execute(f"""
+            UPDATE shopping_items 
+            SET is_bought = 1, buyer_id = ?
+            WHERE id IN ({placeholders})
+        """, [buyer_id] + list(item_ids))
+        await db.commit()
+        schedule_cloud_backup()
+        return cursor.rowcount
 
 
 async def clear_group_shopping_items(group_id: int) -> int:

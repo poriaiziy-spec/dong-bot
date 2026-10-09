@@ -1027,42 +1027,56 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             </div>
         </section>
 
-        <!-- تب ۴: فاکتور و لیست خرید -->
+        <!-- تب ۴: خریدهای خونه و مایحتاج -->
         <section id="tab-shopping" class="tab-content">
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">🛒 فاکتور و لیست خرید دورهمی</div>
+                    <div>
+                        <div class="card-title">🛒 خریدهای خونه و مایحتاج</div>
+                        <div style="font-size:0.76rem; color:var(--text-sub); margin-top:2px;">افزودن نیازها، انتخاب اقلام خریداری‌شده و ثبت دنگ</div>
+                    </div>
                     <select id="shoppingGroupSelect" class="form-control" style="width:auto; padding:6px 14px; font-size:0.86rem;" onchange="renderShoppingList()">
                     </select>
                 </div>
 
-                <!-- فرم افزودن سریع قلم به فاکتور -->
+                <!-- فرم افزودن سریع قلم به لیست خریدهای خونه -->
                 <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:16px; margin-bottom:18px;">
-                    <div style="font-size:0.92rem; font-weight:800; margin-bottom:12px; color:var(--gold-primary);">➕ افزودن قلم جدید به فاکتور:</div>
+                    <div style="font-size:0.92rem; font-weight:800; margin-bottom:12px; color:var(--gold-primary);">➕ افزودن نیاز جدید به لیست خرید:</div>
                     <div class="form-group" style="margin-bottom:10px;">
-                        <input type="text" id="shopItemName" class="form-control" placeholder="نام کالا (مثلاً: گوشت چرخ‌کرده، نان، نوشابه)">
+                        <input type="text" id="shopItemName" class="form-control" placeholder="نام کالا (مثلاً: شیر، روغن، نان، تخم‌مرغ)">
                     </div>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
-                        <input type="number" id="shopItemUnitPrice" class="form-control" placeholder="قیمت واحد (تومان)" oninput="calcShopPreview()">
-                        <input type="number" id="shopItemQuantity" class="form-control" placeholder="تعداد یا کیلو (پیش‌فرض: ۱)" step="0.5" oninput="calcShopPreview()">
+                        <input type="number" id="shopItemQuantity" class="form-control" placeholder="تعداد یا کیلو (پیش‌فرض: ۱)" step="0.5" value="1" oninput="calcShopPreview()">
+                        <input type="number" id="shopItemUnitPrice" class="form-control" placeholder="قیمت واحد (اختیاری)" oninput="calcShopPreview()">
                     </div>
-                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; font-size:0.88rem;">
-                        <span style="color:var(--text-sub);">قیمت کل قلم:</span>
-                        <strong id="shopItemTotalPreview" style="color:var(--gold-primary); font-size:1.05rem;">۰ تومان</strong>
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; font-size:0.84rem;">
+                        <span style="color:var(--text-sub);">وضعیت قیمت:</span>
+                        <strong id="shopItemTotalPreview" style="color:var(--gold-primary); font-size:0.92rem;">بدون قیمت (تعیین موقع خرید)</strong>
                     </div>
                     <button class="btn-primary" style="padding:12px;" onclick="submitNewShoppingItem()">
-                        <span>افزودن به لیست خرید</span>
+                        <span>➕ افزودن به لیست خریدهای خونه</span>
                     </button>
                 </div>
 
                 <!-- لیست اقلام فاکتور -->
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                    <span style="font-size:0.88rem; font-weight:800; color:var(--text-main);">📋 اقلام موجود در لیست:</span>
+                    <button class="copy-btn" style="padding:4px 10px; font-size:0.75rem;" onclick="toggleAllShoppingCheckboxes()">انتخاب همه</button>
+                </div>
                 <div id="shoppingItemsContainer">
                 </div>
 
-                <!-- جمع کل فاکتور -->
+                <!-- دکمه خرید و تسویه اقلام انتخاب شده -->
+                <div style="margin-top:16px;">
+                    <button class="btn-primary" id="btnSettleShopping" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow:0 6px 20px rgba(16,185,129,0.3); display:none;" onclick="openSettleShoppingModal()">
+                        <span>🛍️ من خریدم / ثبت دنگ اقلام انتخابی (<span id="selectedShopCountBadge">۰</span>)</span>
+                    </button>
+                </div>
+
+                <!-- جمع کل فاکتور اقلام قیمت‌دار -->
                 <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:14px 16px; display:flex; justify-content:space-between; margin-top:16px;">
-                    <span style="color:var(--text-sub); font-size:0.92rem;">جمع کل فاکتور خرید:</span>
-                    <strong id="shoppingGrandTotal" style="color:var(--emerald-main); font-size:1.15rem;">۰ تومان</strong>
+                    <span style="color:var(--text-sub); font-size:0.88rem;">جمع اقلام قیمت‌دار:</span>
+                    <strong id="shoppingGrandTotal" style="color:var(--emerald-main); font-size:1.1rem;">۰ تومان</strong>
                 </div>
             </div>
         </section>
@@ -1254,6 +1268,40 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     <span>💾 ثبت و ذخیره کارت</span>
                 </button>
                 <button class="del-btn" style="flex: 1; height: auto; border-radius: var(--radius-md); font-weight: 700; background: rgba(255,255,255,0.06); border-color: var(--border-glass); color: var(--text-sub);" onclick="closeAddCardModal()">
+                    <span>انصراف</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال اختصاصی ۳: ثبت مبالغ و محاسبه دنگ خریدهای خونه -->
+    <div class="modal-overlay" id="settleShoppingModal" onclick="closeModalOnBg(event, 'settleShoppingModal')">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>🛍️</span>
+                    <span>ثبت مبالغ و محاسبه دنگ خرید</span>
+                </div>
+                <button class="modal-close-btn" onclick="closeSettleShoppingModal()">✕</button>
+            </div>
+            
+            <p style="font-size:0.82rem; color:var(--text-sub); margin-bottom:14px; line-height:1.6;">
+                مبلغ پرداختی برای هر قلم خریداری‌شده را به تومان وارد کنید تا دنگ آن بین اعضای گروه تقسیم و ثبت شود:
+            </p>
+
+            <div id="settleShoppingItemsList" style="max-height:220px; overflow-y:auto; margin-bottom:16px; display:flex; flex-direction:column; gap:10px;">
+            </div>
+
+            <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:12px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="color:var(--text-sub); font-size:0.88rem;">💳 مجموع کل فاکتور:</span>
+                <strong id="settleShoppingGrandTotal" style="color:var(--emerald-main); font-size:1.15rem;">۰ تومان</strong>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button class="btn-primary" style="flex:2;" onclick="submitSettleShopping()">
+                    <span>💾 ثبت دنگ در گروه ✨</span>
+                </button>
+                <button class="del-btn" style="flex:1; height:auto; border-radius:var(--radius-md); font-weight:700; background:rgba(255,255,255,0.06); border-color:var(--border-glass); color:var(--text-sub);" onclick="closeSettleShoppingModal()">
                     <span>انصراف</span>
                 </button>
             </div>
@@ -1779,7 +1827,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             }
         }
 
-        // فاکتور و لیست خرید
+        // فاکتور و لیست خریدهای خونه
         function renderShoppingList() {
             const data = appState.userData;
             if (!data || !data.groups || data.groups.length === 0) return;
@@ -1799,23 +1847,31 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     </div>
                 `;
                 document.getElementById('shoppingGrandTotal').innerText = '۰ تومان';
+                const btn = document.getElementById('btnSettleShopping');
+                if (btn) btn.style.display = 'none';
                 return;
             }
 
             let html = '';
             let total = 0;
             group.shopping_items.forEach(item => {
-                total += item.total_price;
+                total += (item.total_price || 0);
+                const hasPrice = (item.total_price || 0) > 0;
                 html += `
-                    <div class="item-row">
-                        <div style="display:flex; flex-direction:column; gap:2px;">
-                            <div style="font-size:0.94rem; font-weight:800;">${item.item_name}</div>
-                            <div style="font-size:0.78rem; color:var(--text-sub);">
-                                فی: ${formatToman(item.unit_price)} × ${item.quantity} عدد
+                    <div class="item-row" style="gap:10px;">
+                        <div style="display:flex; align-items:center; gap:12px; flex:1;">
+                            <input type="checkbox" class="shop-item-cb" value="${item.id}" data-id="${item.id}" data-name="${item.item_name}" data-price="${item.total_price || 0}" data-qty="${item.quantity || 1}" onchange="onShopItemCheckChange()" style="width:18px; height:18px; accent-color:var(--gold-primary); cursor:pointer;">
+                            <div style="display:flex; flex-direction:column; gap:2px;">
+                                <div style="font-size:0.94rem; font-weight:800;">${item.item_name}</div>
+                                <div style="font-size:0.76rem; color:var(--text-sub);">
+                                    مقدار: ${item.quantity || 1} ${hasPrice ? '• فی: ' + formatToman(item.unit_price) : ''}
+                                </div>
                             </div>
                         </div>
                         <div style="display:flex; align-items:center; gap:8px;">
-                            <div class="item-price">${formatToman(item.total_price)}</div>
+                            <div class="item-price" style="font-size:0.92rem;">
+                                ${hasPrice ? formatToman(item.total_price) : '<span style="color:var(--gold-primary); font-size:0.75rem; font-weight:700;">📌 نیاز به خرید</span>'}
+                            </div>
                             <button class="del-btn" onclick="deleteShoppingItem(${item.id}, ${currentGroupId})">✕</button>
                         </div>
                     </div>
@@ -1824,12 +1880,39 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
 
             container.innerHTML = html;
             document.getElementById('shoppingGrandTotal').innerText = formatToman(total);
+            onShopItemCheckChange();
+        }
+
+        function onShopItemCheckChange() {
+            const checked = document.querySelectorAll('.shop-item-cb:checked');
+            const count = checked.length;
+            const btn = document.getElementById('btnSettleShopping');
+            if (btn) {
+                if (count > 0) {
+                    btn.style.display = 'flex';
+                    const badge = document.getElementById('selectedShopCountBadge');
+                    if (badge) badge.innerText = count;
+                } else {
+                    btn.style.display = 'none';
+                }
+            }
+        }
+
+        function toggleAllShoppingCheckboxes() {
+            const cbs = document.querySelectorAll('.shop-item-cb');
+            const allChecked = Array.from(cbs).every(cb => cb.checked);
+            cbs.forEach(cb => cb.checked = !allChecked);
+            onShopItemCheckChange();
         }
 
         function calcShopPreview() {
             const p = parseFloat(document.getElementById('shopItemUnitPrice').value) || 0;
             const q = parseFloat(document.getElementById('shopItemQuantity').value) || 1;
-            document.getElementById('shopItemTotalPreview').innerText = formatToman(Math.round(p * q));
+            if (p > 0) {
+                document.getElementById('shopItemTotalPreview').innerText = formatToman(Math.round(p * q));
+            } else {
+                document.getElementById('shopItemTotalPreview').innerText = 'بدون قیمت (تعیین موقع خرید)';
+            }
         }
 
         async function submitNewShoppingItem() {
@@ -1840,10 +1923,6 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
 
             if (!name) {
                 showToast('لطفاً نام کالا را بنویسید');
-                return;
-            }
-            if (unitPrice <= 0) {
-                showToast('قیمت واحد باید بیشتر از صفر باشد');
                 return;
             }
 
@@ -1861,16 +1940,116 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 });
                 const resData = await res.json();
                 if (resData.success) {
-                    showToast('قلم به فاکتور اضافه شد 🛒');
+                    showToast('قلم به لیست خریدهای خونه اضافه شد 🛒✨');
                     document.getElementById('shopItemName').value = '';
                     document.getElementById('shopItemUnitPrice').value = '';
-                    document.getElementById('shopItemQuantity').value = '';
+                    document.getElementById('shopItemQuantity').value = '1';
                     calcShopPreview();
                     await loadData();
                     renderShoppingList();
                 }
             } catch (e) {
                 showToast('خطا در ثبت قلم خرید');
+            }
+        }
+
+        // مودال تسویه اقلام خریداری‌شده
+        function openSettleShoppingModal() {
+            const checked = Array.from(document.querySelectorAll('.shop-item-cb:checked'));
+            if (checked.length === 0) return;
+
+            let html = '';
+            checked.forEach((cb) => {
+                const id = cb.value;
+                const name = cb.dataset.name;
+                const initialPrice = parseInt(cb.dataset.price) || '';
+                html += `
+                    <div style="background:var(--bg-card); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:10px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                        <span style="font-size:0.9rem; font-weight:800; flex:1;">${name}</span>
+                        <input type="number" class="form-control settle-item-price-input" data-id="${id}" data-name="${name}" placeholder="مبلغ خرید (تومان)" value="${initialPrice}" style="width:140px; padding:8px 12px; font-size:0.88rem;" oninput="calcSettleModalTotal()">
+                    </div>
+                `;
+            });
+
+            document.getElementById('settleShoppingItemsList').innerHTML = html;
+            calcSettleModalTotal();
+            document.getElementById('settleShoppingModal').classList.add('active');
+            if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function closeSettleShoppingModal() {
+            document.getElementById('settleShoppingModal').classList.remove('active');
+        }
+
+        function calcSettleModalTotal() {
+            const inputs = document.querySelectorAll('.settle-item-price-input');
+            let total = 0;
+            inputs.forEach(inp => {
+                total += parseInt(inp.value) || 0;
+            });
+            document.getElementById('settleShoppingGrandTotal').innerText = formatToman(total);
+            return total;
+        }
+
+        async function submitSettleShopping() {
+            const total = calcSettleModalTotal();
+            if (total <= 0) {
+                showToast('⚠️ لطفاً مبلغ اقلام خریداری‌شده را وارد کنید');
+                return;
+            }
+
+            const inputs = Array.from(document.querySelectorAll('.settle-item-price-input'));
+            const itemNames = inputs.map(i => i.dataset.name).join('، ');
+            const title = 'خرید خونه (' + itemNames.substring(0, 36) + ')';
+            const groupId = parseInt(document.getElementById('shoppingGroupSelect').value);
+            const group = appState.userData?.groups?.find(g => g.id === groupId);
+            const members = group?.members || [{ id: appState.userId || 1 }];
+
+            // تقسیم دنگ مساوی
+            const baseShare = Math.floor(total / members.length);
+            let rem = total - (baseShare * members.length);
+            const shares = {};
+            members.forEach(m => {
+                shares[m.id] = baseShare + (rem > 0 ? 1 : 0);
+                if (rem > 0) rem--;
+            });
+
+            try {
+                // ثبت به عنوان هزینه گروه
+                const expRes = await fetch('/api/app/add_expense', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        group_id: groupId,
+                        payer_id: appState.userId || 1,
+                        title: title,
+                        amount: total,
+                        shares: shares
+                    })
+                });
+                const expData = await expRes.json();
+                if (!expData.success) {
+                    showToast('خطا در ثبت دنگ خرید');
+                    return;
+                }
+
+                // حذف اقلام خریداری‌شده از لیست
+                for (const inp of inputs) {
+                    const itemId = parseInt(inp.dataset.id);
+                    await fetch('/api/app/delete_shopping_item', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ item_id: itemId, group_id: groupId })
+                    });
+                }
+
+                closeSettleShoppingModal();
+                triggerConfetti();
+                showToast('🎉 خرید با موفقیت ثبت شد و دنگ آن حساب گردید!');
+                await loadData();
+                renderShoppingList();
+            } catch (err) {
+                showToast('خطای شبکه در تسویه خرید');
             }
         }
 
@@ -1883,7 +2062,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 });
                 const resData = await res.json();
                 if (resData.success) {
-                    showToast('قلم از فاکتور حذف شد');
+                    showToast('قلم از لیست خرید حذف شد');
                     await loadData();
                     renderShoppingList();
                 }
@@ -2375,16 +2554,16 @@ async def api_add_expense_handler(request: web.Request) -> web.Response:
 
 
 async def api_add_shopping_item_handler(request: web.Request) -> web.Response:
-    """ثبت قلم جدید در فاکتور خرید از طریق مینی‌اپ"""
+    """ثبت قلم جدید در فاکتور یا خریدهای خونه از طریق مینی‌اپ"""
     try:
         body = await request.json()
         group_id = int(body["group_id"])
         user_id = int(body["user_id"])
         item_name = str(body["item_name"]).strip()
-        unit_price = int(body["unit_price"])
-        quantity = float(body.get("quantity", 1))
+        unit_price = int(body.get("unit_price", 0) or 0)
+        quantity = float(body.get("quantity", 1) or 1)
 
-        if not item_name or unit_price <= 0:
+        if not item_name or unit_price < 0:
             return web.json_response({"success": False, "error": "ورودی نامعتبر"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
 
         it_id = await db.add_shopping_item(group_id, user_id, item_name, unit_price, quantity)

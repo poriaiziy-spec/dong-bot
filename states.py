@@ -29,4 +29,6 @@ class ShoppingItemStates(StatesGroup):
     waiting_for_name = State()
     waiting_for_unit_price = State()
     waiting_for_quantity = State()
+    waiting_for_item_price_batch = State()
+    waiting_for_lump_sum = State()
 
