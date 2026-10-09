@@ -988,6 +988,22 @@ async def mark_shopping_items_bought(item_ids: list[int], buyer_id: int) -> int:
         return cursor.rowcount
 
 
+async def get_bought_shopping_items(group_id: int, limit: int = 20) -> list[dict]:
+    """دریافت اقلام خریداری‌شده همراه با اطلاعات خریدار"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        sql = """
+            SELECT s.*, u.full_name AS buyer_name, u.calling_name AS buyer_calling
+            FROM shopping_items s
+            LEFT JOIN users u ON s.buyer_id = u.id
+            WHERE s.group_id = ? AND s.is_bought = 1
+            ORDER BY s.id DESC
+            LIMIT ?
+        """
+        async with db.execute(sql, (group_id, limit)) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
 async def clear_group_shopping_items(group_id: int) -> int:
     """پاک کردن تمام اقلام لیست خرید یک گروه"""
     async with aiosqlite.connect(DB_PATH) as db:

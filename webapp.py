@@ -4,7 +4,7 @@ from aiohttp import web
 import aiosqlite
 
 import database as db
-from config import DB_PATH, WEB_APP_URL
+from config import DB_PATH, WEB_APP_URL, BOT_TOKEN
 from calculator import calculate_group_balances
 from motivational import CAFE_MOTIVATIONAL_QUOTES
 from bank_utils import format_card_number, detect_bank_name, clean_card_input
@@ -1302,6 +1302,14 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 <strong id="settleShoppingGrandTotal" style="color:var(--emerald-main); font-size:1.15rem;">۰ تومان</strong>
             </div>
 
+            <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:10px 14px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="toggleSettleNotifyGroup()">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:1.1rem;">📢</span>
+                    <span style="font-size:0.84rem; font-weight:700; color:var(--text-main);">اطلاع‌رسانی خرید به اعضای گروه</span>
+                </div>
+                <input type="checkbox" id="settleNotifyGroupCb" checked style="width:18px; height:18px; accent-color:var(--gold-primary); cursor:pointer;">
+            </div>
+
             <div style="display:flex; gap:10px;">
                 <button class="btn-primary" style="flex:2;" onclick="submitSettleShopping()">
                     <span>💾 ثبت دنگ در گروه ✨</span>
@@ -1919,12 +1927,38 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             const container = document.getElementById('shoppingItemsContainer');
 
             if (!group || !group.shopping_items || group.shopping_items.length === 0) {
-                container.innerHTML = `
+                let emptyHtml = `
                     <div class="empty-state">
                         <div class="empty-icon">🛒</div>
-                        <p>لیست خرید این گروه فعلاً خالی است.</p>
+                        <p>لیست اقلام مورد نیاز فعلاً خالی است.</p>
                     </div>
                 `;
+                if (group && group.bought_items && group.bought_items.length > 0) {
+                    emptyHtml += `
+                        <div style="margin-top:20px; border-top:1px dashed var(--border-glass); padding-top:14px;">
+                            <div style="font-size:0.86rem; font-weight:800; color:var(--emerald-main); margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                                <span>✅</span>
+                                <span>اقلام خریداری‌شده اخیر (نیاز به خرید نیست):</span>
+                            </div>
+                    `;
+                    group.bought_items.forEach(b => {
+                        const bName = b.buyer_calling || b.buyer_name || 'هم‌گروهی';
+                        emptyHtml += `
+                            <div class="item-row" style="background:rgba(16,185,129,0.06); border-color:rgba(16,185,129,0.2); opacity:0.88; padding:8px 12px; margin-bottom:6px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="color:var(--emerald-main); font-weight:900;">✓</span>
+                                    <span style="font-size:0.88rem; text-decoration:line-through; color:var(--text-main);">${b.item_name}</span>
+                                    <span style="font-size:0.75rem; color:var(--text-sub);">(${b.quantity || 1})</span>
+                                </div>
+                                <div style="font-size:0.75rem; color:var(--gold-primary);">
+                                    خریدار: ${bName}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    emptyHtml += '</div>';
+                }
+                container.innerHTML = emptyHtml;
                 document.getElementById('shoppingGrandTotal').innerText = '۰ تومان';
                 const btn = document.getElementById('btnSettleShopping');
                 if (btn) btn.style.display = 'none';
@@ -1957,6 +1991,33 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     </div>
                 `;
             });
+
+            if (group.bought_items && group.bought_items.length > 0) {
+                let boughtHtml = `
+                    <div style="margin-top:20px; border-top:1px dashed var(--border-glass); padding-top:14px;">
+                        <div style="font-size:0.86rem; font-weight:800; color:var(--emerald-main); margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                            <span>✅</span>
+                            <span>اقلام خریداری‌شده اخیر (نیاز به خرید نیست):</span>
+                        </div>
+                `;
+                group.bought_items.forEach(b => {
+                    const bName = b.buyer_calling || b.buyer_name || 'هم‌گروهی';
+                    boughtHtml += `
+                        <div class="item-row" style="background:rgba(16,185,129,0.06); border-color:rgba(16,185,129,0.2); opacity:0.88; padding:8px 12px; margin-bottom:6px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span style="color:var(--emerald-main); font-weight:900;">✓</span>
+                                <span style="font-size:0.88rem; text-decoration:line-through; color:var(--text-main);">${b.item_name}</span>
+                                <span style="font-size:0.75rem; color:var(--text-sub);">(${b.quantity || 1})</span>
+                            </div>
+                            <div style="font-size:0.75rem; color:var(--gold-primary);">
+                                خریدار: ${bName}
+                            </div>
+                        </div>
+                    `;
+                });
+                boughtHtml += '</div>';
+                html += boughtHtml;
+            }
 
             container.innerHTML = html;
             document.getElementById('shoppingGrandTotal').innerText = formatToman(total);
@@ -2071,6 +2132,11 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             return total;
         }
 
+        function toggleSettleNotifyGroup() {
+            const cb = document.getElementById('settleNotifyGroupCb');
+            if (cb) cb.checked = !cb.checked;
+        }
+
         async function submitSettleShopping() {
             const total = calcSettleModalTotal();
             if (total <= 0) {
@@ -2113,14 +2179,35 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     return;
                 }
 
-                // حذف اقلام خریداری‌شده از لیست
-                for (const inp of inputs) {
-                    const itemId = parseInt(inp.dataset.id);
-                    await fetch('/api/app/delete_shopping_item', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ item_id: itemId, group_id: groupId })
-                    });
+                // علامت‌گذاری اقلام به عنوان خریداری‌شده
+                const itemIds = inputs.map(inp => parseInt(inp.dataset.id));
+                await fetch('/api/app/mark_shopping_items_bought', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        item_ids: itemIds,
+                        group_id: groupId,
+                        buyer_id: appState.userId || 1
+                    })
+                });
+
+                // ارسال پیام اطلاع‌رسانی به گروه در صورت انتخاب خریدار
+                const shouldNotify = document.getElementById('settleNotifyGroupCb')?.checked;
+                if (shouldNotify) {
+                    try {
+                        await fetch('/api/app/notify_shopping_purchase', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                group_id: groupId,
+                                buyer_id: appState.userId || 1,
+                                total_amount: total,
+                                items: inputs.map(i => ({ name: i.dataset.name, qty: i.dataset.qty || 1 }))
+                            })
+                        });
+                    } catch(e) {
+                        console.log('Notification error:', e);
+                    }
                 }
 
                 closeSettleShoppingModal();
@@ -2641,6 +2728,7 @@ async def api_user_data_handler(request: web.Request) -> web.Response:
             active_expenses = await db.get_active_expenses(gid)
             balances = calculate_group_balances(members, active_expenses)
             shopping_items = await db.get_group_shopping_items(gid)
+            bought_items = await db.get_bought_shopping_items(gid, limit=10)
 
             # افزودن کارت طلبکار به فرمول تسویه و تضمین نام‌های خوانا
             for s in balances.get("settlements", []):
@@ -2681,7 +2769,8 @@ async def api_user_data_handler(request: web.Request) -> web.Response:
                 "members": members,
                 "expenses": active_expenses,
                 "balances": balances,
-                "shopping_items": shopping_items
+                "shopping_items": shopping_items,
+                "bought_items": bought_items
             })
 
         import random
@@ -2863,6 +2952,91 @@ async def api_delete_food_handler(request: web.Request) -> web.Response:
         return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
 
 
+async def api_mark_shopping_items_bought_handler(request: web.Request) -> web.Response:
+    """علامت‌گذاری اقلام به عنوان خریداری‌شده از طریق مینی‌اپ"""
+    try:
+        body = await request.json()
+        raw_ids = body.get("item_ids", [])
+        buyer_id = int(body.get("buyer_id", 0)) or None
+        item_ids = [int(x) for x in raw_ids if str(x).isdigit()]
+        if not item_ids:
+            return web.json_response({"success": False, "error": "اقلام مشخص نشده‌اند"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+        await db.mark_shopping_items_bought(item_ids, buyer_id=buyer_id)
+        return web.json_response({"success": True, "count": len(item_ids)}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"api_mark_shopping_items_bought_handler error: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
+async def api_notify_shopping_purchase_handler(request: web.Request) -> web.Response:
+    """ارسال اعلان خرید اقلام به سایر اعضای گروه از طریق مینی‌اپ"""
+    try:
+        body = await request.json()
+        group_id = int(body.get("group_id", 0))
+        buyer_id = int(body.get("buyer_id", 0))
+        total_amount = int(body.get("total_amount", 0))
+        raw_items = body.get("items", [])
+
+        if not group_id:
+            return web.json_response({"success": False, "error": "شناسه گروه الزامی است"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+        group = await db.get_group_by_id(group_id)
+        if not group:
+            return web.json_response({"success": False, "error": "گروه یافت نشد"}, status=404, headers={"Access-Control-Allow-Origin": "*"})
+
+        members = await db.get_group_members(group_id)
+        buyer = next((m for m in members if m["id"] == buyer_id), None)
+        buyer_name = (buyer.get("display_name") or buyer.get("nickname") or buyer.get("calling_name") or buyer.get("full_name")) if buyer else "هم‌گروهی"
+
+        if raw_items:
+            items_lines = "\n".join(f"• <b>{it.get('name', 'کالا')}</b> ({it.get('qty', 1)})" for it in raw_items)
+        else:
+            bought_items = await db.get_bought_shopping_items(group_id, limit=15)
+            bought_by_user = [it for it in bought_items if it.get("buyer_id") == buyer_id]
+            if bought_by_user:
+                items_lines = "\n".join(f"• <b>{it['item_name']}</b> ({it['quantity']})" for it in bought_by_user[:10])
+            else:
+                items_lines = "• اقلام ثبت‌شده در فاکتور خرید اخیر"
+
+        amount_str = format_amount(total_amount) if total_amount > 0 else ""
+        amount_line = f"\n💰 <b>مجموع کل فاکتور: {amount_str}</b>\n<i>(دنگ آن در حساب گروه محاسبه و ثبت شد)</i>\n" if amount_str else ""
+
+        notice_text = (
+            f"🛍️ <b>خریدهای خونه انجام شد!</b> 🧺✨\n\n"
+            f"گروه: <b>«{group['title']}»</b>\n"
+            f"👤 <b>خریدار:</b> {buyer_name}\n\n"
+            f"✅ <b>اقلام زیر خریداری شدند و دیگر نیازی به خرید ندارند:</b>\n"
+            f"{items_lines}\n"
+            f"{amount_line}\n"
+            f"🌸 <i>دست خریدار پر برکت و دلش شاد!</i> ❤️"
+        )
+
+        sent_count = 0
+        if BOT_TOKEN:
+            import aiohttp
+            telegram_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            async with aiohttp.ClientSession() as session:
+                for m in members:
+                    if m["id"] != buyer_id:
+                        try:
+                            payload = {
+                                "chat_id": m["id"],
+                                "text": notice_text,
+                                "parse_mode": "HTML"
+                            }
+                            async with session.post(telegram_api_url, json=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                                if resp.status == 200:
+                                    sent_count += 1
+                        except Exception as e:
+                            logger.warning(f"Failed to notify member {m['id']}: {e}")
+
+        return web.json_response({"success": True, "sent_count": sent_count}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"api_notify_shopping_purchase_handler error: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
 def setup_webapp_routes(app: web.Application):
     """ثبت تمام مسیرهای مربوط به مینی‌اپ در اپلیکیشن aiohttp"""
     app.router.add_get("/app", miniapp_page_handler)
@@ -2873,6 +3047,8 @@ def setup_webapp_routes(app: web.Application):
     app.router.add_post("/api/app/add_shopping_items_bulk", api_add_shopping_items_bulk_handler)
     app.router.add_post("/api/app/edit_shopping_item", api_edit_shopping_item_handler)
     app.router.add_post("/api/app/delete_shopping_item", api_delete_shopping_item_handler)
+    app.router.add_post("/api/app/mark_shopping_items_bought", api_mark_shopping_items_bought_handler)
+    app.router.add_post("/api/app/notify_shopping_purchase", api_notify_shopping_purchase_handler)
     app.router.add_post("/api/app/add_card", api_add_card_handler)
     app.router.add_post("/api/app/add_food", api_add_food_handler)
     app.router.add_post("/api/app/delete_food", api_delete_food_handler)

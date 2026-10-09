@@ -413,6 +413,18 @@ async def test_all_scenarios():
     assert len(bulk_ids) == 3
     grp_items_after_bulk = await db.get_group_shopping_items(s_grp)
     assert len(grp_items_after_bulk) == 3
+
+    # تست علامت‌گذاری اقلام به عنوان خریداری‌شده و دریافت اقلام خریداری‌شده
+    await db.mark_shopping_items_bought([bulk_ids[0], bulk_ids[1]], buyer_id=creator_id)
+    pending_after_bought = await db.get_group_shopping_items(s_grp)
+    assert len(pending_after_bought) == 1
+    assert pending_after_bought[0]["item_name"] == "بیسکویت"
+
+    bought_list = await db.get_bought_shopping_items(s_grp)
+    assert len(bought_list) == 2
+    assert bought_list[0]["is_bought"] == 1
+    assert bought_list[0]["buyer_id"] == creator_id
+
     await db.clear_group_shopping_items(s_grp)
 
     await db.delete_group(s_grp, creator_id)
@@ -483,6 +495,10 @@ async def test_all_scenarios():
         InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="تایید واریز", callback_data=f"pay:ack:{BIG_USER}:{BIG_USER}:{BIG_AMT}"),
             InlineKeyboardButton(text="عدم واریز", callback_data=f"pay:nack:{BIG_USER}:{BIG_USER}")
+        ]]),
+        InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="اطلاع‌رسانی خرید", callback_data=f"shop:bnotif:{BIG_EXP}:{BIG_GRP}"),
+            InlineKeyboardButton(text="اطلاع‌رسانی شد", callback_data="shop:bnotif_done")
         ]]),
         quote_dismiss_keyboard()
     ]
@@ -638,6 +654,28 @@ async def test_all_scenarios():
             "text": "   "
         })
         assert bulk_bad.status == 400
+
+        # آزمون علامت‌گذاری اقلام خرید به عنوان خریداری‌شده از مینی‌اپ
+        mark_bought_res = await client.post("/api/app/mark_shopping_items_bought", json={
+            "item_ids": bulk_json["item_ids"][:2],
+            "group_id": t_grp_id,
+            "buyer_id": user_id
+        })
+        assert mark_bought_res.status == 200
+        mark_bought_json = await mark_bought_res.json()
+        assert mark_bought_json["success"] is True
+        assert mark_bought_json["count"] == 2
+
+        # تست ارسال اطلاع‌رسانی خرید اقلام به اعضای گروه از مینی‌اپ
+        notify_res = await client.post("/api/app/notify_shopping_purchase", json={
+            "group_id": t_grp_id,
+            "buyer_id": user_id,
+            "total_amount": 120000,
+            "items": [{"name": "شیر ۲ تا", "qty": 2}]
+        })
+        assert notify_res.status == 200
+        notify_json = await notify_res.json()
+        assert notify_json["success"] is True
         
         # ۶. آزمون ثبت کارت از مینی‌اپ
         card_post = await client.post("/api/app/add_card", json={

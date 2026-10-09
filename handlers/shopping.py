@@ -91,6 +91,14 @@ async def handle_shopping_view(callback: CallbackQuery, state: FSMContext = None
         if has_priced_items and total_sum > 0:
             lines.append(f"💳 جمع اقلام دارای قیمت تخمینی: {format_amount(total_sum)}")
 
+        bought_items = await db.get_bought_shopping_items(group_id, limit=5)
+        if bought_items:
+            lines.append("\n✅ <b>اقلام خریداری‌شده اخیر:</b>")
+            for b in bought_items:
+                b_name = b.get("buyer_calling") or b.get("buyer_name") or "هم‌گروهی"
+                b_qty = format_quantity(b.get("quantity", 1))
+                lines.append(f"• <s>{safe(b['item_name'])}</s> ({b_qty}) • <i>خریدار: {safe(b_name)}</i>")
+
         text = "\n".join(lines)
         markup = kb.shopping_list_keyboard(group_id, has_items=True)
 
@@ -686,10 +694,9 @@ async def handle_shopping_lump_sum(message: Message, state: FSMContext):
     names_summary = "، ".join(it["item_name"] for it in items_to_price)
     title = f"خرید خونه ({names_summary[:36]})"
 
-    await db.add_expense(group_id, buyer_id, title, total_amount, shares)
-    # حذف اقلام خریداری‌شده از لیست خرید
+    exp_id = await db.add_expense(group_id, buyer_id, title, total_amount, shares)
     del_ids = [it["id"] for it in items_to_price]
-    await db.delete_shopping_items(del_ids, group_id)
+    await db.mark_shopping_items_bought(del_ids, buyer_id)
 
     await state.clear()
     await db.cleanup_chat_history(message.bot, user_id)
@@ -702,12 +709,13 @@ async def handle_shopping_lump_sum(message: Message, state: FSMContext):
         + f"\n💰 <b>مجموع کل فاکتور: {format_amount(total_amount)}</b>\n"
         f"👤 <b>خریدار:</b> {safe(buyer_name)}\n"
         f"👥 <b>سهم هر یک از اعضا ({m_count} نفر):</b> <b>{format_amount(base_share)}</b>\n\n"
-        "🌸 <i>اقلام خریداری‌شده از لیست نیازهای گروه خارج شدند. دست خریدار پر برکت!</i> ❤️"
+        "🌸 <i>اقلام خریداری‌شده به عنوان خریدهای انجام‌شده علامت خوردند. دست خریدار پر برکت!</i> ❤️"
     )
     sent = await message.answer(
         receipt_text,
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📢 اطلاع‌رسانی خرید به اعضای گروه", callback_data=f"shop:bnotif:{exp_id}:{group_id}")],
             [InlineKeyboardButton(text="🛒 مشاهده لیست خریدهای خونه", callback_data=f"shop:view:{group_id}")],
             [InlineKeyboardButton(text="📊 وضعیت حساب‌ها و تراز مالی", callback_data=f"grp:report:{group_id}")],
             [InlineKeyboardButton(text="🏠 بازگشت به منوی دورهمی", callback_data=f"grp:view:{group_id}")]
@@ -793,9 +801,9 @@ async def handle_shopping_item_price_batch(message: Message, state: FSMContext):
     names_summary = "، ".join(it["item_name"] for it in items_to_price)
     title = f"خرید خونه ({names_summary[:36]})"
 
-    await db.add_expense(group_id, buyer_id, title, total_amount, shares)
+    exp_id = await db.add_expense(group_id, buyer_id, title, total_amount, shares)
     del_ids = [it["id"] for it in items_to_price]
-    await db.delete_shopping_items(del_ids, group_id)
+    await db.mark_shopping_items_bought(del_ids, buyer_id)
 
     await state.clear()
 
@@ -812,18 +820,92 @@ async def handle_shopping_item_price_batch(message: Message, state: FSMContext):
         f"💰 <b>مجموع کل فاکتور: {format_amount(total_amount)}</b>\n"
         f"👤 <b>خریدار:</b> {safe(buyer_name)}\n"
         f"👥 <b>سهم هر یک از اعضا ({m_count} نفر):</b> <b>{format_amount(base_share)}</b>\n\n"
-        "🌸 <i>اقلام خریداری‌شده از لیست نیازهای گروه خارج شدند. دست خریدار پر برکت!</i> ❤️"
+        "🌸 <i>اقلام خریداری‌شده به عنوان خریدهای انجام‌شده علامت خوردند. دست خریدار پر برکت!</i> ❤️"
     )
     sent = await message.answer(
         receipt_text,
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📢 اطلاع‌رسانی خرید به اعضای گروه", callback_data=f"shop:bnotif:{exp_id}:{group_id}")],
             [InlineKeyboardButton(text="🛒 مشاهده لیست خریدهای خونه", callback_data=f"shop:view:{group_id}")],
             [InlineKeyboardButton(text="📊 وضعیت حساب‌ها و تراز مالی", callback_data=f"grp:report:{group_id}")],
             [InlineKeyboardButton(text="🏠 بازگشت به منوی دورهمی", callback_data=f"grp:view:{group_id}")]
         ])
     )
     await db.record_chat_message(user_id, sent.message_id)
+
+
+@router.callback_query(F.data.startswith("shop:bnotif:"))
+async def handle_shopping_buy_notify(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    exp_id = int(parts[2])
+    group_id = int(parts[3])
+
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    expense = await db.get_expense_by_id(exp_id, group_id)
+    members = await db.get_group_members(group_id)
+    buyer_id = callback.from_user.id
+    buyer = next((m for m in members if m["id"] == buyer_id), None)
+    buyer_name = (buyer.get("display_name") or buyer.get("nickname") or buyer.get("calling_name") or buyer["full_name"]) if buyer else "هم‌گروهی"
+
+    # دریافت اقلام خریداری شده اخیر توسط این کاربر
+    bought_items = await db.get_bought_shopping_items(group_id, limit=15)
+    bought_by_user = [it for it in bought_items if it.get("buyer_id") == buyer_id]
+
+    if bought_by_user:
+        items_lines = "\n".join(f"• <b>{safe(it['item_name'])}</b> ({format_quantity(it['quantity'])})" for it in bought_by_user[:10])
+    elif expense:
+        items_lines = f"• <b>{safe(expense['title'])}</b>"
+    else:
+        items_lines = "• اقلام ثبت‌شده در فاکتور خرید اخیر"
+
+    amount_str = format_amount(expense["amount"]) if expense else ""
+    amount_line = f"\n💰 <b>مجموع کل فاکتور: {amount_str}</b>\n<i>(دنگ آن در حساب گروه محاسبه و ثبت شد)</i>\n" if amount_str else ""
+
+    notice_text = (
+        f"🛍️ <b>خریدهای خونه انجام شد!</b> 🧺✨\n\n"
+        f"گروه: <b>«{safe(group['title'])}»</b>\n"
+        f"👤 <b>خریدار:</b> {safe(buyer_name)}\n\n"
+        f"✅ <b>اقلام زیر خریداری شدند و دیگر نیازی به خرید ندارند:</b>\n"
+        f"{items_lines}\n"
+        f"{amount_line}\n"
+        f"🌸 <i>دست خریدار پر برکت و دلش شاد!</i> ❤️"
+    )
+
+    sent_count = 0
+    for m in members:
+        if m["id"] != buyer_id:
+            try:
+                await callback.bot.send_message(m["id"], notice_text, parse_mode="HTML")
+                sent_count += 1
+            except Exception:
+                pass
+
+    if sent_count > 0:
+        await callback.answer(f"📢 خرید این اقلام با موفقیت به {sent_count} نفر از اعضای گروه اطلاع‌رسانی شد! 🌸", show_alert=True)
+    else:
+        await callback.answer("📢 پیام اطلاع‌رسانی آماده شد (هنوز عضو دیگری در گروه ثبت‌نام نکرده است).", show_alert=True)
+
+    updated_markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ به اعضای گروه اطلاع‌رسانی شد", callback_data="shop:bnotif_done")],
+        [InlineKeyboardButton(text="🛒 مشاهده لیست خریدهای خونه", callback_data=f"shop:view:{group_id}")],
+        [InlineKeyboardButton(text="📊 وضعیت حساب‌ها و تراز مالی", callback_data=f"grp:report:{group_id}")],
+        [InlineKeyboardButton(text="🏠 بازگشت به منوی دورهمی", callback_data=f"grp:view:{group_id}")]
+    ])
+    try:
+        await callback.message.edit_reply_markup(reply_markup=updated_markup)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "shop:bnotif_done")
+async def handle_shopping_buy_notify_done(callback: CallbackQuery):
+    await callback.answer("این خرید قبلاً به اعضای گروه اطلاع‌رسانی شده است جان دلم! 🌸", show_alert=True)
+
 
 
 # ===========================================================================
