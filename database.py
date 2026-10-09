@@ -974,6 +974,45 @@ async def clear_group_shopping_items(group_id: int) -> int:
         return cursor.rowcount
 
 
+async def get_shopping_item_by_id(item_id: int, group_id: int) -> dict | None:
+    """دریافت اطلاعات یک قلم مشخص از لیست خرید"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT s.*, u.full_name, u.username, u.calling_name
+            FROM shopping_items s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.id = ? AND s.group_id = ?
+        """, (item_id, group_id)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def update_shopping_item(item_id: int, group_id: int, item_name: str | None = None, quantity: float | None = None, unit_price: int | None = None) -> bool:
+    """ویرایش نام، تعداد یا قیمت یک قلم در لیست خرید"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM shopping_items WHERE id = ? AND group_id = ?", (item_id, group_id)) as cur:
+            row = await cur.fetchone()
+            if not row:
+                return False
+            curr = dict(row)
+
+        new_name = item_name.strip() if item_name is not None and item_name.strip() else curr["item_name"]
+        new_qty = float(quantity) if quantity is not None and quantity > 0 else curr["quantity"]
+        new_unit = int(unit_price) if unit_price is not None and unit_price >= 0 else curr["unit_price"]
+        new_total = int(round(new_unit * new_qty))
+
+        cursor = await db.execute("""
+            UPDATE shopping_items
+            SET item_name = ?, quantity = ?, unit_price = ?, total_price = ?
+            WHERE id = ? AND group_id = ?
+        """, (new_name, new_qty, new_unit, new_total, item_id, group_id))
+        await db.commit()
+        schedule_cloud_backup()
+        return cursor.rowcount > 0
+
+
 async def add_custom_food(group_id: int | None, user_id: int | None, name: str, category: str = "all", emoji: str = "🍽️", description: str = "") -> int:
     """افزودن غذای دلخواه جدید به گردونه چی بخوریم"""
     clean_name = str(name).strip()

@@ -349,6 +349,24 @@ async def test_all_scenarios():
     assert items_list[1]["total_price"] == 750000  # ۵۰۰ هزار ضرب در ۱.۵
     assert items_list[2]["unit_price"] == 0
     assert items_list[2]["total_price"] == 0
+
+    # تست ویرایش قلم فاکتور و دریافت مشخصات آن
+    single_it = await db.get_shopping_item_by_id(it1_id, s_grp)
+    assert single_it is not None
+    assert single_it["item_name"] == "چیپس"
+
+    # به‌روزرسانی نام و تعداد و قیمت
+    upd_res = await db.update_shopping_item(it1_id, s_grp, item_name="چیپس فلفلی", quantity=5, unit_price=40000)
+    assert upd_res is True
+    updated_it = await db.get_shopping_item_by_id(it1_id, s_grp)
+    assert updated_it["item_name"] == "چیپس فلفلی"
+    assert updated_it["quantity"] == 5.0
+    assert updated_it["unit_price"] == 40000
+    assert updated_it["total_price"] == 200000  # ۴۰ هزار ضرب در ۵
+
+    # ویرایش قلم ناموجود باید False برگرداند
+    assert (await db.update_shopping_item(999999, s_grp, item_name="نامعتبر")) is False
+    assert (await db.get_shopping_item_by_id(999999, s_grp)) is None
     
     # تست علامت‌گذاری یا حذف چندتایی
     del_multi = await db.delete_shopping_items([it3_id], s_grp)
@@ -410,6 +428,8 @@ async def test_all_scenarios():
         kb.shopping_buy_items_keyboard([{"id": BIG_EXP, "item_name": "شیر ۲ تا"}], BIG_GRP, {BIG_EXP}),
         kb.shopping_del_items_keyboard([{"id": BIG_EXP, "item_name": "چیپس مخصوص", "total_price": BIG_AMT}], BIG_GRP),
         kb.shopping_clear_confirm_keyboard(BIG_GRP),
+        kb.shopping_edit_items_keyboard([{"id": BIG_EXP, "item_name": "چیپس مخصوص", "total_price": BIG_AMT}], BIG_GRP),
+        kb.shopping_edit_options_keyboard(BIG_EXP, BIG_GRP),
         kb.expense_amount_choice_keyboard(BIG_GRP),
         kb.miniapp_keyboard(),
         kb.miniapp_keyboard(BIG_GRP)
@@ -526,6 +546,39 @@ async def test_all_scenarios():
         assert shop_json["success"] is True
         shop_it_id = shop_json["item_id"]
         
+        # ویرایش قلم خرید از مینی‌اپ
+        shop_edit = await client.post("/api/app/edit_shopping_item", json={
+            "item_id": shop_it_id,
+            "group_id": t_grp_id,
+            "item_name": "سیب‌زمینی ویژه پنیردار",
+            "quantity": 3,
+            "unit_price": 60000
+        })
+        assert shop_edit.status == 200
+        assert (await shop_edit.json())["success"] is True
+
+        # تست اعتبارسنجی ورودی‌های نامعتبر در ویرایش
+        bad_name = await client.post("/api/app/edit_shopping_item", json={
+            "item_id": shop_it_id,
+            "group_id": t_grp_id,
+            "item_name": "   "
+        })
+        assert bad_name.status == 400
+
+        bad_qty = await client.post("/api/app/edit_shopping_item", json={
+            "item_id": shop_it_id,
+            "group_id": t_grp_id,
+            "quantity": 0
+        })
+        assert bad_qty.status == 400
+
+        bad_price = await client.post("/api/app/edit_shopping_item", json={
+            "item_id": shop_it_id,
+            "group_id": t_grp_id,
+            "unit_price": -500
+        })
+        assert bad_price.status == 400
+
         # حذف قلم خرید از مینی‌اپ
         shop_del = await client.post("/api/app/delete_shopping_item", json={
             "item_id": shop_it_id,

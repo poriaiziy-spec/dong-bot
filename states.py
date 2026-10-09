@@ -31,4 +31,5 @@ class ShoppingItemStates(StatesGroup):
     waiting_for_quantity = State()
     waiting_for_item_price_batch = State()
     waiting_for_lump_sum = State()
+    waiting_for_edit_input = State()
 

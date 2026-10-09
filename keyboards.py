@@ -110,10 +110,11 @@ def shopping_list_keyboard(group_id: int, has_items: bool = False) -> InlineKeyb
             InlineKeyboardButton(text="🛍️ من خریدم (انتخاب و ثبت دنگ)", callback_data=f"shop:bmenu:{group_id}")
         ])
         keyboard.append([
-            InlineKeyboardButton(text="💾 ثبت یکجای کل فاکتور", callback_data=f"shop:to_exp:{group_id}")
+            InlineKeyboardButton(text="✏️ ویرایش قلم", callback_data=f"shop:ed_menu:{group_id}"),
+            InlineKeyboardButton(text="🗑️ حذف قلم", callback_data=f"shop:del_menu:{group_id}")
         ])
         keyboard.append([
-            InlineKeyboardButton(text="🗑️ حذف قلم", callback_data=f"shop:del_menu:{group_id}"),
+            InlineKeyboardButton(text="💾 ثبت یکجای کل فاکتور", callback_data=f"shop:to_exp:{group_id}"),
             InlineKeyboardButton(text="🧹 خالی کردن لیست", callback_data=f"shop:clear_confirm:{group_id}")
         ])
     keyboard.append([
@@ -154,6 +155,40 @@ def shopping_buy_items_keyboard(items: list[dict], group_id: int, selected_ids: 
         InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data=f"shop:view:{group_id}")
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def shopping_edit_items_keyboard(items: list[dict], group_id: int) -> InlineKeyboardMarkup:
+    """کیبورد انتخاب قلم جهت ویرایش"""
+    keyboard = []
+    for it in items[:15]:
+        qty_str = f" ({it['quantity']})" if it.get("quantity") and it.get("quantity") != 1 else ""
+        name_short = it['item_name'][:18]
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"✏️ {name_short}{qty_str}",
+                callback_data=f"shop:ed_it:{it['id']}:{group_id}"
+            )
+        ])
+    keyboard.append([
+        InlineKeyboardButton(text="🔙 بازگشت به لیست خرید", callback_data=f"shop:view:{group_id}")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def shopping_edit_options_keyboard(item_id: int, group_id: int) -> InlineKeyboardMarkup:
+    """انتخاب نوع ویرایش برای یک قلم مشخص"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🏷️ ویرایش عنوان / نام کالا", callback_data=f"shop:ed_fld:{item_id}:{group_id}:name"),
+            InlineKeyboardButton(text="🔢 ویرایش مقدار / تعداد", callback_data=f"shop:ed_fld:{item_id}:{group_id}:qty")
+        ],
+        [
+            InlineKeyboardButton(text="💵 ویرایش یا ثبت قیمت", callback_data=f"shop:ed_fld:{item_id}:{group_id}:price")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 بازگشت به لیست ویرایش", callback_data=f"shop:ed_menu:{group_id}")
+        ]
+    ])
 
 
 def shopping_del_items_keyboard(items: list[dict], group_id: int) -> InlineKeyboardMarkup:

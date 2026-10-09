@@ -683,6 +683,161 @@ async def handle_shopping_item_price_batch(message: Message, state: FSMContext):
 
 
 # ===========================================================================
+# فرآیند ویرایش اقلام لیست خرید (نام، تعداد، قیمت)
+# ===========================================================================
+
+@router.callback_query(F.data.startswith("shop:ed_menu:"))
+async def handle_shopping_edit_menu(callback: CallbackQuery):
+    group_id = int(callback.data.split(":")[2])
+    items = await db.get_group_shopping_items(group_id)
+    if not items:
+        await callback.answer("⚠️ لیست خرید خالی است!", show_alert=True)
+        return
+
+    await callback.answer()
+    text = "✏️ <b>ویرایش اقلام لیست خریدهای خونه:</b>\n\nروی هر موردی که می‌خوای ویرایشش کنی بزن جان دلم:"
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.shopping_edit_items_keyboard(items, group_id))
+
+
+@router.callback_query(F.data.startswith("shop:ed_it:"))
+async def handle_shopping_edit_item_select(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    parts = callback.data.split(":")
+    item_id = int(parts[2])
+    group_id = int(parts[3])
+
+    item = await db.get_shopping_item_by_id(item_id, group_id)
+    if not item:
+        await callback.answer("⚠️ این قلم یافت نشد!", show_alert=True)
+        await handle_shopping_view(callback)
+        return
+
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+    tot_price = item.get("total_price", 0)
+    price_info = format_amount(tot_price) if tot_price > 0 else "بدون قیمت (تعیین موقع خرید)"
+    qty_info = format_quantity(item.get("quantity", 1))
+
+    text = (
+        f"✏️ <b>ویرایش قلم «{safe(item['item_name'])}»</b>\n\n"
+        f"• عنوان فعلی: <b>{safe(item['item_name'])}</b>\n"
+        f"• مقدار یا تعداد فعلی: <b>{qty_info}</b>\n"
+        f"• وضعیت قیمت فعلی: <b>{price_info}</b>\n\n"
+        f"چه بخشی از این قلم رو می‌خوای تغییر بدی {safe(calling_name)} قشنگم؟"
+    )
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=kb.shopping_edit_options_keyboard(item_id, group_id)
+    )
+
+
+@router.callback_query(F.data.startswith("shop:ed_fld:"))
+async def handle_shopping_edit_field_prompt(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    parts = callback.data.split(":")
+    item_id = int(parts[2])
+    group_id = int(parts[3])
+    field = parts[4]
+
+    item = await db.get_shopping_item_by_id(item_id, group_id)
+    if not item:
+        await callback.answer("⚠️ قلم یافت نشد!", show_alert=True)
+        return
+
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+    await state.clear()
+    await state.set_state(ShoppingItemStates.waiting_for_edit_input)
+    await state.update_data(item_id=item_id, group_id=group_id, edit_field=field)
+
+    if field == "name":
+        prompt = (
+            f"🏷️ <b>ویرایش نام کالا</b>\n\n"
+            f"نام فعلی: <b>{safe(item['item_name'])}</b>\n\n"
+            f"لطفاً <b>نام یا عنوان جدید</b> را بفرست {safe(calling_name)} جانم:\n"
+            "<i>(مثلاً: <code>شیر کم چرب کاله</code>)</i>"
+        )
+    elif field == "qty":
+        prompt = (
+            f"🔢 <b>ویرایش مقدار یا تعداد</b>\n\n"
+            f"مقدار فعلی قلم «{safe(item['item_name'])}»: <b>{format_quantity(item['quantity'])}</b>\n\n"
+            f"لطفاً <b>تعداد یا مقدار جدید</b> را بفرست {safe(calling_name)} قشنگم:\n"
+            "<i>(مثلاً: <code>4</code> یا <code>2.5</code>)</i>"
+        )
+    else:  # price
+        curr_p = item.get("unit_price", 0)
+        p_str = format_amount(curr_p) if curr_p > 0 else "تعیین نشده"
+        prompt = (
+            f"💵 <b>ویرایش یا ثبت قیمت واحد</b>\n\n"
+            f"قیمت فعلی قلم «{safe(item['item_name'])}»: <b>{p_str}</b>\n\n"
+            f"لطفاً <b>قیمت واحد جدید به تومان</b> را بفرست {safe(calling_name)} جانم:\n"
+            "<i>(مثلاً: <code>45000</code> یا <code>۴۵ هزار</code>)</i>"
+        )
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ انصراف", callback_data=f"shop:ed_it:{item_id}:{group_id}")]
+    ])
+    await callback.message.edit_text(prompt, parse_mode="HTML", reply_markup=markup)
+
+
+@router.message(ShoppingItemStates.waiting_for_edit_input)
+async def handle_shopping_edit_input_submit(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    calling_name = await db.get_user_calling_name(user_id) or "جان دلم"
+    data = await state.get_data()
+    item_id = data.get("item_id")
+    group_id = data.get("group_id")
+    field = data.get("edit_field")
+
+    raw_text = (message.text or "").strip()
+    if not raw_text:
+        return
+
+    success_msg = ""
+    if field == "name":
+        if len(raw_text) > 80:
+            sent = await message.answer("⚠️ نام کالا حداکثر ۸۰ کاراکتر باشد:")
+            await db.record_chat_message(user_id, sent.message_id)
+            return
+        await db.update_shopping_item(item_id, group_id, item_name=raw_text)
+        success_msg = f"✅ نام قلم با موفقیت به <b>«{safe(raw_text)}»</b> تغییر یافت {safe(calling_name)} جانم! 🌸"
+
+    elif field == "qty":
+        qty = parse_quantity(raw_text)
+        if not qty or qty <= 0:
+            sent = await message.answer("⚠️ لطفاً عددی مانند <code>4</code> یا <code>2.5</code> بفرست:")
+            await db.record_chat_message(user_id, sent.message_id)
+            return
+        await db.update_shopping_item(item_id, group_id, quantity=qty)
+        success_msg = f"✅ مقدار قلم با موفقیت به <b>{format_quantity(qty)}</b> تغییر یافت {safe(calling_name)} قشنگم! 🌸"
+
+    elif field == "price":
+        price = clean_amount_input(raw_text)
+        if not price or price <= 0:
+            sent = await message.answer("⚠️ لطفاً مبلغ معتبری به تومان بفرست (مثلاً: <code>45000</code>):")
+            await db.record_chat_message(user_id, sent.message_id)
+            return
+        await db.update_shopping_item(item_id, group_id, unit_price=price)
+        success_msg = f"✅ قیمت قلم با موفقیت به <b>{format_amount(price)}</b> به‌روزرسانی شد {safe(calling_name)} جانم! 🌸"
+
+    await state.clear()
+    await db.cleanup_chat_history(message.bot, user_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    sent = await message.answer(
+        success_msg,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 مشاهده لیست خریدهای خونه", callback_data=f"shop:view:{group_id}")],
+            [InlineKeyboardButton(text="✏️ ویرایش قلم دیگر", callback_data=f"shop:ed_menu:{group_id}")]
+        ])
+    )
+    await db.record_chat_message(user_id, sent.message_id)
+
+
+# ===========================================================================
 # سایر عملیات‌های لیست خرید: حذف قلم، خالی کردن، ثبت یکجا
 # ===========================================================================
 

@@ -1308,6 +1308,50 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- مودال اختصاصی ۴: ویرایش قلم لیست خرید -->
+    <div class="modal-overlay" id="editShoppingItemModal" onclick="closeModalOnBg(event, 'editShoppingItemModal')">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>✏️</span>
+                    <span>ویرایش قلم خرید</span>
+                </div>
+                <button class="modal-close-btn" onclick="closeEditShoppingItemModal()">✕</button>
+            </div>
+            
+            <p style="font-size:0.82rem; color:var(--text-sub); margin-bottom:14px; line-height:1.6;">
+                اطلاعات قلم انتخابی را ویرایش کرده و ذخیره نمایید:
+            </p>
+
+            <input type="hidden" id="editShopItemId">
+
+            <div class="form-group" style="margin-bottom:10px;">
+                <label style="font-size:0.78rem; color:var(--text-sub); margin-bottom:4px; display:block;">نام کالا:</label>
+                <input type="text" id="editShopItemName" class="form-control" placeholder="نام کالا (مثلاً: شیر، روغن، نان)">
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                <div>
+                    <label style="font-size:0.78rem; color:var(--text-sub); margin-bottom:4px; display:block;">تعداد یا مقدار:</label>
+                    <input type="number" id="editShopItemQuantity" class="form-control" placeholder="تعداد" step="0.5" value="1">
+                </div>
+                <div>
+                    <label style="font-size:0.78rem; color:var(--text-sub); margin-bottom:4px; display:block;">قیمت واحد (تومان):</label>
+                    <input type="number" id="editShopItemUnitPrice" class="form-control" placeholder="اختیاری">
+                </div>
+            </div>
+
+            <div style="display:flex; gap:10px; margin-top:16px;">
+                <button class="btn-primary" style="flex:2;" onclick="submitEditShoppingItem()">
+                    <span>💾 ذخیره تغییرات ✨</span>
+                </button>
+                <button class="del-btn" style="flex:1; height:auto; border-radius:var(--radius-md); font-weight:700; background:rgba(255,255,255,0.06); border-color:var(--border-glass); color:var(--text-sub);" onclick="closeEditShoppingItemModal()">
+                    <span>انصراف</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // اتصال به تلگرام وب‌اپ
         const tg = window.Telegram?.WebApp;
@@ -1872,6 +1916,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                             <div class="item-price" style="font-size:0.92rem;">
                                 ${hasPrice ? formatToman(item.total_price) : '<span style="color:var(--gold-primary); font-size:0.75rem; font-weight:700;">📌 نیاز به خرید</span>'}
                             </div>
+                            <button class="del-btn" onclick="openEditShoppingItemModal(${item.id}, '${item.item_name.replace(/'/g, "\\'")}', ${item.quantity || 1}, ${item.unit_price || 0})" style="color:var(--gold-primary); border-color:var(--gold-primary); background:rgba(217,160,82,0.1); width:28px; height:28px; font-size:0.8rem;" title="ویرایش قلم">✏️</button>
                             <button class="del-btn" onclick="deleteShoppingItem(${item.id}, ${currentGroupId})">✕</button>
                         </div>
                     </div>
@@ -2068,6 +2113,57 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 }
             } catch (e) {
                 showToast('خطا در حذف قلم');
+            }
+        }
+
+        function openEditShoppingItemModal(id, name, qty, unitPrice) {
+            document.getElementById('editShopItemId').value = id;
+            document.getElementById('editShopItemName').value = name || '';
+            document.getElementById('editShopItemQuantity').value = qty || 1;
+            document.getElementById('editShopItemUnitPrice').value = (unitPrice && unitPrice > 0) ? unitPrice : '';
+            document.getElementById('editShoppingItemModal').classList.add('active');
+            if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function closeEditShoppingItemModal() {
+            document.getElementById('editShoppingItemModal').classList.remove('active');
+        }
+
+        async function submitEditShoppingItem() {
+            const itemId = parseInt(document.getElementById('editShopItemId').value);
+            const groupId = parseInt(document.getElementById('shoppingGroupSelect').value) || appState.currentGroupId;
+            const name = document.getElementById('editShopItemName').value.trim();
+            const qty = parseFloat(document.getElementById('editShopItemQuantity').value) || 1;
+            const unitPrice = parseInt(document.getElementById('editShopItemUnitPrice').value) || 0;
+
+            if (!name) {
+                showToast('لطفاً نام کالا را بنویسید');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/app/edit_shopping_item', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        item_id: itemId,
+                        group_id: groupId,
+                        item_name: name,
+                        quantity: qty,
+                        unit_price: unitPrice
+                    })
+                });
+                const resData = await res.json();
+                if (resData.success) {
+                    showToast('قلم با موفقیت ویرایش شد ✏️✨');
+                    closeEditShoppingItemModal();
+                    await loadData();
+                    renderShoppingList();
+                } else {
+                    showToast(resData.error || 'خطا در ویرایش قلم');
+                }
+            } catch (e) {
+                showToast('خطای شبکه در ویرایش قلم');
             }
         }
 
@@ -2585,6 +2681,38 @@ async def api_delete_shopping_item_handler(request: web.Request) -> web.Response
         return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
 
 
+async def api_edit_shopping_item_handler(request: web.Request) -> web.Response:
+    """ویرایش قلم خرید از طریق مینی‌اپ"""
+    try:
+        body = await request.json()
+        item_id = int(body["item_id"])
+        group_id = int(body["group_id"])
+        item_name = body.get("item_name")
+        unit_price = body.get("unit_price")
+        quantity = body.get("quantity")
+
+        if item_name is not None:
+            item_name = str(item_name).strip()
+            if not item_name:
+                return web.json_response({"success": False, "error": "نام کالا نمی‌تواند خالی باشد"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+        if unit_price is not None:
+            unit_price = int(unit_price)
+            if unit_price < 0:
+                return web.json_response({"success": False, "error": "قیمت نمی‌تواند منفی باشد"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+        if quantity is not None:
+            quantity = float(quantity)
+            if quantity <= 0:
+                return web.json_response({"success": False, "error": "تعداد باید بیشتر از صفر باشد"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+        res = await db.update_shopping_item(item_id, group_id, item_name=item_name, quantity=quantity, unit_price=unit_price)
+        return web.json_response({"success": bool(res)}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"api_edit_shopping_item_handler error: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
 async def api_add_card_handler(request: web.Request) -> web.Response:
     """افزودن کارت بانکی از طریق مینی‌اپ"""
     try:
@@ -2645,6 +2773,7 @@ def setup_webapp_routes(app: web.Application):
     app.router.add_get("/api/app/user_data", api_user_data_handler)
     app.router.add_post("/api/app/add_expense", api_add_expense_handler)
     app.router.add_post("/api/app/add_shopping_item", api_add_shopping_item_handler)
+    app.router.add_post("/api/app/edit_shopping_item", api_edit_shopping_item_handler)
     app.router.add_post("/api/app/delete_shopping_item", api_delete_shopping_item_handler)
     app.router.add_post("/api/app/add_card", api_add_card_handler)
     app.router.add_post("/api/app/add_food", api_add_food_handler)
