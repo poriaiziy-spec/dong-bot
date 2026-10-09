@@ -8,7 +8,7 @@ from config import DB_PATH, WEB_APP_URL
 from calculator import calculate_group_balances
 from motivational import CAFE_MOTIVATIONAL_QUOTES
 from bank_utils import format_card_number, detect_bank_name, clean_card_input
-from helpers import format_amount
+from helpers import format_amount, parse_bulk_shopping_text
 
 logger = logging.getLogger(__name__)
 
@@ -1053,9 +1053,14 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                         <span style="color:var(--text-sub);">وضعیت قیمت:</span>
                         <strong id="shopItemTotalPreview" style="color:var(--gold-primary); font-size:0.92rem;">بدون قیمت (تعیین موقع خرید)</strong>
                     </div>
-                    <button class="btn-primary" style="padding:12px;" onclick="submitNewShoppingItem()">
-                        <span>➕ افزودن به لیست خریدهای خونه</span>
-                    </button>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <button class="btn-primary" style="padding:12px;" onclick="submitNewShoppingItem()">
+                            <span>➕ افزودن تک‌قلم</span>
+                        </button>
+                        <button class="copy-btn" style="padding:12px; justify-content:center; border-color:var(--gold-primary); color:var(--gold-primary); background:rgba(217,160,82,0.1); font-size:0.86rem;" onclick="openBulkShoppingModal()">
+                            <span>📝 افزودن دسته‌ای لیست</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- لیست اقلام فاکتور -->
@@ -1346,6 +1351,36 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     <span>💾 ذخیره تغییرات ✨</span>
                 </button>
                 <button class="del-btn" style="flex:1; height:auto; border-radius:var(--radius-md); font-weight:700; background:rgba(255,255,255,0.06); border-color:var(--border-glass); color:var(--text-sub);" onclick="closeEditShoppingItemModal()">
+                    <span>انصراف</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال اختصاصی ۵: ورود دسته‌ای اقلام لیست خرید -->
+    <div class="modal-overlay" id="bulkShoppingModal" onclick="closeModalOnBg(event, 'bulkShoppingModal')">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>📝</span>
+                    <span>ورود دسته‌ای لیست خرید</span>
+                </div>
+                <button class="modal-close-btn" onclick="closeBulkShoppingModal()">✕</button>
+            </div>
+            
+            <p style="font-size:0.82rem; color:var(--text-sub); margin-bottom:12px; line-height:1.6;">
+                اقلام مورد نیاز خانه را بنویسید یا پیست کنید. می‌توانید اقلام را زیر هم بنویسید، شماره‌گذاری کنید یا با ویرگول (،) جدا کنید:
+            </p>
+
+            <div class="form-group" style="margin-bottom:14px;">
+                <textarea id="bulkShopTextarea" class="form-control" rows="6" style="resize:vertical; min-height:130px; font-family:var(--font-family); font-size:0.88rem; line-height:1.7;" placeholder="شیر ۲ تا&#10;نان سنگک&#10;پنیر صباح&#10;روغن ۴۵۰۰۰ ۲&#10;تخم‌مرغ ۱ شانه"></textarea>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button class="btn-primary" style="flex:2;" onclick="submitBulkShopping()">
+                    <span>💾 ثبت و افزودن همه اقلام ✨</span>
+                </button>
+                <button class="del-btn" style="flex:1; height:auto; border-radius:var(--radius-md); font-weight:700; background:rgba(255,255,255,0.06); border-color:var(--border-glass); color:var(--text-sub);" onclick="closeBulkShoppingModal()">
                     <span>انصراف</span>
                 </button>
             </div>
@@ -2167,6 +2202,49 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             }
         }
 
+        function openBulkShoppingModal() {
+            document.getElementById('bulkShopTextarea').value = '';
+            document.getElementById('bulkShoppingModal').classList.add('active');
+            if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function closeBulkShoppingModal() {
+            document.getElementById('bulkShoppingModal').classList.remove('active');
+        }
+
+        async function submitBulkShopping() {
+            const text = document.getElementById('bulkShopTextarea').value.trim();
+            const groupId = parseInt(document.getElementById('shoppingGroupSelect').value) || appState.currentGroupId;
+
+            if (!text) {
+                showToast('لطفاً لیست خرید را وارد کنید');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/app/add_shopping_items_bulk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        group_id: groupId,
+                        user_id: appState.userId || 1,
+                        text: text
+                    })
+                });
+                const resData = await res.json();
+                if (resData.success) {
+                    showToast(`${resData.count || 'اقلام'} به لیست خرید اضافه شد 📝✨`);
+                    closeBulkShoppingModal();
+                    await loadData();
+                    renderShoppingList();
+                } else {
+                    showToast(resData.error || 'خطا در ثبت لیست خرید');
+                }
+            } catch (e) {
+                showToast('خطای شبکه در ثبت لیست خرید');
+            }
+        }
+
         // گردونه غذا و غذاهای اختصاصی
         function setFoodCategory(cat, btn) {
             appState.selectedFoodCategory = cat;
@@ -2669,6 +2747,25 @@ async def api_add_shopping_item_handler(request: web.Request) -> web.Response:
         return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
 
 
+async def api_add_shopping_items_bulk_handler(request: web.Request) -> web.Response:
+    """افزودن دسته‌ای اقلام به لیست خرید از طریق مینی‌اپ"""
+    try:
+        body = await request.json()
+        group_id = int(body["group_id"])
+        user_id = int(body["user_id"])
+        text = str(body.get("text", "")).strip()
+
+        items = parse_bulk_shopping_text(text)
+        if not items:
+            return web.json_response({"success": False, "error": "هیچ قلم معتبری در متن لیست خرید یافت نشد"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+        inserted_ids = await db.add_shopping_items_bulk(group_id, user_id, items)
+        return web.json_response({"success": True, "count": len(inserted_ids), "item_ids": inserted_ids}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"api_add_shopping_items_bulk_handler error: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
 async def api_delete_shopping_item_handler(request: web.Request) -> web.Response:
     """حذف قلم فاکتور از طریق مینی‌اپ"""
     try:
@@ -2773,6 +2870,7 @@ def setup_webapp_routes(app: web.Application):
     app.router.add_get("/api/app/user_data", api_user_data_handler)
     app.router.add_post("/api/app/add_expense", api_add_expense_handler)
     app.router.add_post("/api/app/add_shopping_item", api_add_shopping_item_handler)
+    app.router.add_post("/api/app/add_shopping_items_bulk", api_add_shopping_items_bulk_handler)
     app.router.add_post("/api/app/edit_shopping_item", api_edit_shopping_item_handler)
     app.router.add_post("/api/app/delete_shopping_item", api_delete_shopping_item_handler)
     app.router.add_post("/api/app/add_card", api_add_card_handler)

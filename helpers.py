@@ -193,3 +193,116 @@ def parse_amount_or_quantity_expression(text: str | None) -> tuple[int | None, d
         return simple_val, None
 
     return None, None
+
+
+def parse_single_shopping_line(line: str) -> dict | None:
+    """
+    تحلیل یک سطر تکی از لیست خرید و استخراج:
+    نام کالا، مقدار/تعداد، قیمت واحد و قیمت کل
+    """
+    if not line:
+        return None
+    raw = str(line).strip()
+    if not raw:
+        return None
+
+    # حذف پیشوندهای شمارشی و بولت‌ها (مانند: 1. یا 1- یا 1) یا - یا * یا •)
+    raw = re.sub(r"^[\s\d]+[\.\-\)\:]\s*", "", raw).strip()
+    raw = re.sub(r"^[\*\-\•\·\+\#\>\~]\s*", "", raw).strip()
+    if not raw:
+        return None
+
+    parts = raw.split()
+    if not parts:
+        return None
+
+    units_keywords = [
+        "تا", "عدد", "کیلو", "بسته", "دانه", "بطری", "جعبه",
+        "شانه", "کیلوگرم", "دست", "قوطی", "پاکت", "لیتر"
+    ]
+
+    # ۱. بررسی حالت نام + قیمت + تعداد یا نام + تعداد + قیمت (حداقل ۳ یا ۴ بخش)
+    if len(parts) >= 3:
+        # اگر کلمه آخر یکی از واحدهای شمارش است (مثل: روغن ۴۵۰۰۰ ۲ تا)
+        if parts[-1] in units_keywords and len(parts) >= 4:
+            potential_qty = parse_quantity(parts[-2])
+            potential_unit = clean_amount_input(parts[-3])
+            if potential_qty and potential_unit and potential_qty > 0 and potential_unit >= 1000:
+                name = " ".join(parts[:-3]).strip()
+                if name:
+                    tot = int(round(potential_unit * potential_qty))
+                    return {"item_name": name, "quantity": potential_qty, "unit_price": potential_unit, "total_price": tot}
+
+        # بررسی فرمت «چیپس 35000 4» (قیمت و سپس تعداد)
+        potential_qty = parse_quantity(parts[-1])
+        potential_unit = clean_amount_input(parts[-2])
+        if potential_qty and potential_unit and potential_qty > 0 and potential_unit >= 1000:
+            name = " ".join(parts[:-2]).strip()
+            if name:
+                tot = int(round(potential_unit * potential_qty))
+                return {"item_name": name, "quantity": potential_qty, "unit_price": potential_unit, "total_price": tot}
+
+        # بررسی فرمت برعکس «شیر ۲ 35000» (تعداد و سپس قیمت)
+        potential_qty_rev = parse_quantity(parts[-2])
+        potential_unit_rev = clean_amount_input(parts[-1])
+        if potential_qty_rev and potential_unit_rev and potential_qty_rev > 0 and potential_unit_rev >= 1000:
+            name = " ".join(parts[:-2]).strip()
+            if name:
+                tot = int(round(potential_unit_rev * potential_qty_rev))
+                return {"item_name": name, "quantity": potential_qty_rev, "unit_price": potential_unit_rev, "total_price": tot}
+
+    # ۲. بررسی نام + مقدار یا نام + قیمت (حداقل ۲ بخش)
+    if len(parts) >= 2:
+        last = parts[-1]
+        prev = parts[-2]
+        if last in units_keywords:
+            qty = parse_quantity(prev)
+            if qty and qty > 0:
+                name = " ".join(parts[:-2]).strip()
+                if name:
+                    return {"item_name": name, "quantity": qty, "unit_price": 0, "total_price": 0}
+
+        # اگر بخش آخر یک مقدار پولی است (>= 1000 تومان)
+        num_price = clean_amount_input(last)
+        if num_price and num_price >= 1000:
+            name = " ".join(parts[:-1]).strip()
+            if name:
+                return {"item_name": name, "quantity": 1.0, "unit_price": num_price, "total_price": num_price}
+
+        # اگر بخش آخر عدد ساده است (مقدار/تعداد)
+        qty = parse_quantity(last)
+        if qty and qty > 0:
+            name = " ".join(parts[:-1]).strip()
+            if name:
+                return {"item_name": name, "quantity": qty, "unit_price": 0, "total_price": 0}
+
+    # ۳. پیش‌فرض: کالا بدون قیمت و با مقدار پیش‌فرض ۱
+    return {"item_name": raw, "quantity": 1.0, "unit_price": 0, "total_price": 0}
+
+
+def parse_bulk_shopping_text(raw_text: str | None) -> list[dict]:
+    """
+    تحلیل هوشمند و تفکیک متن یکپارچه لیست خرید به اقلام مجزا
+    پشتیبانی از تفکیک خطوط (Enter)، بولت‌ها و کاما/ویرگول فارسی
+    """
+    if not raw_text:
+        return []
+
+    items = []
+    lines = str(raw_text).strip().splitlines()
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # تفکیک سطرهای دارای ویرگول یا کاما
+        sub_parts = re.split(r"[،,;]+", line)
+        for part in sub_parts:
+            part = part.strip()
+            if not part:
+                continue
+            parsed = parse_single_shopping_line(part)
+            if parsed and parsed.get("item_name"):
+                items.append(parsed)
+
+    return items
+

@@ -102,7 +102,8 @@ def shopping_list_keyboard(group_id: int, has_items: bool = False) -> InlineKeyb
     """کیبورد صفحه اصلی لیست خرید و خریدهای خونه"""
     keyboard = [
         [
-            InlineKeyboardButton(text="➕ افزودن قلم به لیست خرید", callback_data=f"shop:add:{group_id}")
+            InlineKeyboardButton(text="➕ افزودن قلم تک", callback_data=f"shop:add:{group_id}"),
+            InlineKeyboardButton(text="📝 افزودن دسته‌ای لیست", callback_data=f"shop:bulk:{group_id}")
         ]
     ]
     if has_items:

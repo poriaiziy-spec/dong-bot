@@ -911,6 +911,29 @@ async def add_shopping_item(group_id: int, user_id: int, item_name: str, unit_pr
         return item_id
 
 
+async def add_shopping_items_bulk(group_id: int, user_id: int, items: list[dict]) -> list[int]:
+    """افزودن دسته‌ای اقلام به لیست خرید گروه با یک تراکنش دیتابیس"""
+    if not items:
+        return []
+    inserted_ids = []
+    async with aiosqlite.connect(DB_PATH) as db:
+        for it in items:
+            name = str(it.get("item_name") or "").strip()
+            if not name:
+                continue
+            unit = int(it.get("unit_price") or 0)
+            qty = float(it.get("quantity") or 1.0)
+            tot = int(round(unit * qty))
+            cursor = await db.execute("""
+                INSERT INTO shopping_items (group_id, user_id, item_name, unit_price, quantity, total_price, is_bought)
+                VALUES (?, ?, ?, ?, ?, ?, 0)
+            """, (group_id, user_id, name, unit, qty, tot))
+            inserted_ids.append(cursor.lastrowid)
+        await db.commit()
+    schedule_cloud_backup()
+    return inserted_ids
+
+
 async def get_group_shopping_items(group_id: int, include_bought: bool = False) -> list[dict]:
     """دریافت تمام اقلام لیست خرید گروه به همراه نام ثبت‌کننده"""
     async with aiosqlite.connect(DB_PATH) as db:

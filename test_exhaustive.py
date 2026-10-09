@@ -17,7 +17,7 @@ if sys.platform.startswith("win"):
 import database as db
 import keyboards as kb
 from calculator import calculate_group_balances
-from helpers import clean_amount_input, format_amount, safe, mention_user, parse_quantity, format_quantity, parse_amount_or_quantity_expression
+from helpers import clean_amount_input, format_amount, safe, mention_user, parse_quantity, format_quantity, parse_amount_or_quantity_expression, parse_bulk_shopping_text, parse_single_shopping_line
 from bank_utils import clean_card_input, format_card_number, detect_bank_name
 import tones
 from random_names import FUNNY_GROUP_NAMES, get_random_group_name, get_random_member_nickname
@@ -82,6 +82,26 @@ async def test_all_scenarios():
     assert exp7_tot == 140000 and exp7_dt is None
     assert parse_amount_or_quantity_expression("-5000")[0] is None
     assert parse_amount_or_quantity_expression(None)[0] is None
+
+    # تست تفکیک و پارس هوشمند لیست خرید تکی و دسته‌ای
+    line1 = parse_single_shopping_line("1. شیر ۲ تا")
+    assert line1["item_name"] == "شیر" and line1["quantity"] == 2.0 and line1["unit_price"] == 0
+    line2 = parse_single_shopping_line("2- پنیر صباح 45000 2")
+    assert line2["item_name"] == "پنیر صباح" and line2["quantity"] == 2.0 and line2["unit_price"] == 45000 and line2["total_price"] == 90000
+    line3 = parse_single_shopping_line("- نان سنگک")
+    assert line3["item_name"] == "نان سنگک" and line3["quantity"] == 1.0 and line3["unit_price"] == 0
+    line4 = parse_single_shopping_line("روغن مایع ۴۵۰۰۰ ۲ تا")
+    assert line4["item_name"] == "روغن مایع" and line4["quantity"] == 2.0 and line4["unit_price"] == 45000
+
+    bulk_res = parse_bulk_shopping_text("شیر ۲ تا\nنان سنگک\nپنیر صباح 45000 2\nماست، تخم‌مرغ ۱ شانه")
+    assert len(bulk_res) == 5
+    assert bulk_res[0]["item_name"] == "شیر" and bulk_res[0]["quantity"] == 2.0
+    assert bulk_res[1]["item_name"] == "نان سنگک"
+    assert bulk_res[2]["item_name"] == "پنیر صباح" and bulk_res[2]["total_price"] == 90000
+    assert bulk_res[3]["item_name"] == "ماست"
+    assert bulk_res[4]["item_name"] == "تخم‌مرغ" and bulk_res[4]["quantity"] == 1.0
+    assert len(parse_bulk_shopping_text("")) == 0
+    assert len(parse_bulk_shopping_text(None)) == 0
     print("✅ تمامی تست‌های ورودی مبلغ، تعداد و فرمول‌های ضرب فی در تعداد پاس شدند.")
 
     # -------------------------------------------------------------
@@ -382,6 +402,19 @@ async def test_all_scenarios():
     clr_res = await db.clear_group_shopping_items(s_grp)
     assert clr_res == 1
     assert len(await db.get_group_shopping_items(s_grp)) == 0
+
+    # تست افزودن دسته‌ای اقلام به لیست خرید در دیتابیس
+    bulk_input = [
+        {"item_name": "چای لاهیجان", "quantity": 1.0, "unit_price": 95000},
+        {"item_name": "قند", "quantity": 2.0, "unit_price": 30000},
+        {"item_name": "بیسکویت", "quantity": 3.0, "unit_price": 0}
+    ]
+    bulk_ids = await db.add_shopping_items_bulk(s_grp, creator_id, bulk_input)
+    assert len(bulk_ids) == 3
+    grp_items_after_bulk = await db.get_group_shopping_items(s_grp)
+    assert len(grp_items_after_bulk) == 3
+    await db.clear_group_shopping_items(s_grp)
+
     await db.delete_group(s_grp, creator_id)
     print("✅ آزمون چرخه گروه، تسویه حساب‌ها و فاکتور ساز اقلام خرید پاس شد.")
 
@@ -586,6 +619,25 @@ async def test_all_scenarios():
         })
         assert shop_del.status == 200
         assert (await shop_del.json())["success"] is True
+
+        # آزمون افزودن دسته‌ای اقلام خرید از مینی‌اپ
+        bulk_post = await client.post("/api/app/add_shopping_items_bulk", json={
+            "group_id": t_grp_id,
+            "user_id": user_id,
+            "text": "شیر ۲ تا\nنان سنگک\nپنیر صباح 45000 2"
+        })
+        assert bulk_post.status == 200
+        bulk_json = await bulk_post.json()
+        assert bulk_json["success"] is True
+        assert bulk_json["count"] == 3
+
+        # تست ورودی نامعتبر در افزودن دسته‌ای
+        bulk_bad = await client.post("/api/app/add_shopping_items_bulk", json={
+            "group_id": t_grp_id,
+            "user_id": user_id,
+            "text": "   "
+        })
+        assert bulk_bad.status == 400
         
         # ۶. آزمون ثبت کارت از مینی‌اپ
         card_post = await client.post("/api/app/add_card", json={

@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 import database as db
 import keyboards as kb
 from states import ShoppingItemStates, ExpenseCreationStates
-from helpers import clean_amount_input, format_amount, safe, parse_quantity, format_quantity
+from helpers import clean_amount_input, format_amount, safe, parse_quantity, format_quantity, parse_bulk_shopping_text, parse_single_shopping_line
 from tones import msg_expense_payer_prompt
 
 router = Router()
@@ -125,6 +125,105 @@ async def handle_shopping_add_start(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
 
 
+@router.callback_query(F.data.startswith("shop:bulk:"))
+async def handle_shopping_bulk_start(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    group_id = int(callback.data.split(":")[2])
+    
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.message.edit_text("⚠️ گروه یافت نشد.", reply_markup=kb.main_menu_keyboard())
+        return
+
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+    await state.clear()
+    await state.set_state(ShoppingItemStates.waiting_for_bulk_text)
+    await state.update_data(group_id=group_id)
+
+    text = (
+        "📝 <b>افزودن دسته‌ای اقلام به لیست خریدهای خونه</b> 🧺✨\n\n"
+        f"{safe(calling_name)} قشنگم، کل لیست خریدت رو برام بفرست!\n\n"
+        "می‌تونی اقلام رو زیر هم بنویسی، شماره‌گذاری کنی یا با ویرگول (،) جدا کنی.\n"
+        "حتی اگر تعداد یا قیمت هم بنویسی متوجه میشم:\n\n"
+        "📋 <b>چند نمونه ورودی:</b>\n"
+        "• <code>شیر ۲ تا\nنان سنگک\nپنیر\nروغن ۴۵۰۰۰ ۲\nتخم‌مرغ ۱ شانه</code>\n\n"
+        "• یا در یک خط:\n"
+        "<code>شیر، ماست، پنیر، نان سنگک ۲ تا</code>\n\n"
+        "<i>منتظر لیست قشنگتم... ✨</i>"
+    )
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data=f"shop:view:{group_id}")]
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+
+
+@router.message(ShoppingItemStates.waiting_for_bulk_text)
+async def handle_shopping_bulk_submit(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    calling_name = await db.get_user_calling_name(user_id) or "جان دلم"
+    data = await state.get_data()
+    group_id = data.get("group_id")
+
+    raw_text = (message.text or "").strip()
+    items = parse_bulk_shopping_text(raw_text)
+
+    if not items:
+        sent = await message.answer(
+            f"⚠️ {safe(calling_name)} جانم، متوجه قلمی در این متن نشدم! لطفاً لیست خرید را با نام اقلام بفرست:\n"
+            "<i>(مثلاً:\nشیر ۲ تا\nنان سنگک\nپنیر)</i>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ انصراف", callback_data=f"shop:view:{group_id}")]
+            ])
+        )
+        await db.record_chat_message(user_id, sent.message_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        return
+
+    inserted_ids = await db.add_shopping_items_bulk(group_id, user_id, items)
+    await state.clear()
+    await db.cleanup_chat_history(message.bot, user_id)
+
+    item_lines = []
+    total_priced = 0
+    for idx, it in enumerate(items, 1):
+        q_str = f" ({format_quantity(it['quantity'])})" if it["quantity"] != 1.0 else ""
+        if it["total_price"] > 0:
+            total_priced += it["total_price"]
+            item_lines.append(f"{idx}. 💰 <b>{safe(it['item_name'])}</b>{q_str} ➔ {format_amount(it['total_price'])}")
+        else:
+            item_lines.append(f"{idx}. ⭕ <b>{safe(it['item_name'])}</b>{q_str}")
+
+    summary_text = (
+        f"✅ <b>{len(inserted_ids)} قلم کالا با موفقیت به لیست خریدهای خونه اضافه شد {safe(calling_name)} جانم!</b> 🧺🌸\n\n"
+        + "\n".join(item_lines) + "\n\n"
+    )
+    if total_priced > 0:
+        summary_text += f"💳 جمع اقلام دارای قیمت: <b>{format_amount(total_priced)}</b>\n\n"
+
+    summary_text += "هر موقع خرید انجام شد، با دکمه «🛍️ من خریدم» می‌تونید اقلام خریداری‌شده رو تیک بزنید تا دنگشون حساب بشه."
+
+    sent = await message.answer(
+        summary_text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="➕ افزودن قلم تک", callback_data=f"shop:add:{group_id}"),
+                InlineKeyboardButton(text="📝 افزودن لیست دیگر", callback_data=f"shop:bulk:{group_id}")
+            ],
+            [InlineKeyboardButton(text="📋 مشاهده لیست خریدهای خونه", callback_data=f"shop:view:{group_id}")]
+        ])
+    )
+    await db.record_chat_message(user_id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+
 @router.message(ShoppingItemStates.waiting_for_name)
 async def handle_shopping_item_name(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -133,6 +232,51 @@ async def handle_shopping_item_name(message: Message, state: FSMContext):
     group_id = data.get("group_id")
 
     raw_text = (message.text or "").strip()
+
+    # بررسی هوشمند ورود لیست چند قلمی در فرم تک‌قلمی
+    bulk_items = parse_bulk_shopping_text(raw_text)
+    if len(bulk_items) > 1:
+        inserted_ids = await db.add_shopping_items_bulk(group_id, user_id, bulk_items)
+        await state.clear()
+        await db.cleanup_chat_history(message.bot, user_id)
+
+        item_lines = []
+        total_priced = 0
+        for idx, it in enumerate(bulk_items, 1):
+            q_str = f" ({format_quantity(it['quantity'])})" if it["quantity"] != 1.0 else ""
+            if it["total_price"] > 0:
+                total_priced += it["total_price"]
+                item_lines.append(f"{idx}. 💰 <b>{safe(it['item_name'])}</b>{q_str} ➔ {format_amount(it['total_price'])}")
+            else:
+                item_lines.append(f"{idx}. ⭕ <b>{safe(it['item_name'])}</b>{q_str}")
+
+        summary_text = (
+            f"✅ <b>{len(inserted_ids)} قلم کالا به صورت دسته‌ای به لیست خریدهای خونه اضافه شد {safe(calling_name)} جانم!</b> 🧺🌸\n\n"
+            + "\n".join(item_lines) + "\n\n"
+        )
+        if total_priced > 0:
+            summary_text += f"💳 جمع اقلام دارای قیمت: <b>{format_amount(total_priced)}</b>\n\n"
+
+        summary_text += "هر موقع خرید انجام شد، با دکمه «🛍️ من خریدم» می‌تونید اقلام خریداری‌شده رو تیک بزنید تا دنگشون حساب بشه."
+
+        sent = await message.answer(
+            summary_text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="➕ افزودن قلم تک", callback_data=f"shop:add:{group_id}"),
+                    InlineKeyboardButton(text="📝 افزودن لیست دیگر", callback_data=f"shop:bulk:{group_id}")
+                ],
+                [InlineKeyboardButton(text="📋 مشاهده لیست خریدهای خونه", callback_data=f"shop:view:{group_id}")]
+            ])
+        )
+        await db.record_chat_message(user_id, sent.message_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        return
+
     if len(raw_text) < 1 or len(raw_text) > 80:
         sent = await message.answer(
             f"⚠️ {safe(calling_name)} جانم، لطفاً نام کالا را بین ۱ تا ۸۰ کاراکتر وارد کن:",
