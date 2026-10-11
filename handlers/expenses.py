@@ -408,6 +408,20 @@ async def handle_view_single_expense(callback: CallbackQuery, state: FSMContext 
     is_settled = bool(expense.get("settled"))
     can_edit = bool(group and (group["created_by"] == callback.from_user.id or expense.get("payer_id") == callback.from_user.id) and not is_settled)
 
+    exp_shares = expense.get("shares")
+    if not exp_shares:
+        full_exp = await db.get_expense_by_id(exp_id, group_id)
+        if full_exp:
+            exp_shares = full_exp.get("shares", [])
+    
+    shares_text = ""
+    if exp_shares:
+        shares_lines = "\n".join(
+            f"• {safe(s.get('display_name') or s.get('full_name') or 'عضو')}: <b>{format_amount(s['share_amount'])}</b>"
+            for s in exp_shares
+        )
+        shares_text = f"\n👥 <b>افراد سهیم در این هزینه ({len(exp_shares)} نفر):</b>\n{shares_lines}\n"
+
     calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
     status = "تسویه شده ✅" if is_settled else "فعال در دوره جاری ⏳"
     text = (
@@ -415,6 +429,7 @@ async def handle_view_single_expense(callback: CallbackQuery, state: FSMContext 
         f"🏷️ بابت: <b>{safe(expense['title'])}</b>\n"
         f"💰 مبلغ: <b>{format_amount(expense['amount'])}</b>\n"
         f"👤 پرداخت‌کننده: <b>{expense.get('payer_name', 'نامشخص')}</b>\n"
+        f"{shares_text}"
         f"📅 تاریخ: {expense.get('created_at', '')}\n"
         f"📊 وضعیت: <b>{status}</b>\n"
     )
@@ -469,6 +484,127 @@ async def handle_start_edit_expense_amount(callback: CallbackQuery, state: FSMCo
     ])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("exp:edit_sh:"))
+async def handle_start_edit_expense_shares(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    exp_id = int(parts[2])
+    group_id = int(parts[3])
+
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    expense = await db.get_expense_by_id(exp_id, group_id)
+    if not expense:
+        await callback.answer("هزینه یافت نشد عزیز دلم!", show_alert=True)
+        return
+
+    if expense.get("settled"):
+        await callback.answer("⚠️ این هزینه قبلاً تسویه شده و قابل ویرایش نیست عزیز دلم!", show_alert=True)
+        return
+
+    is_authorized = (
+        callback.from_user.id == group["created_by"] or 
+        expense.get("payer_id") == callback.from_user.id
+    )
+    if not is_authorized:
+        await callback.answer("⚠️ فقط ثبت‌کننده این هزینه یا سرگروه مجاز به ویرایش افراد سهیم هستند جان دلم!", show_alert=True)
+        return
+
+    members = await db.get_group_members(group_id)
+    current_shares = expense.get("shares", [])
+    selected_uids = [s["user_id"] for s in current_shares]
+    if not selected_uids:
+        selected_uids = [m["id"] for m in members]
+
+    await state.clear()
+    await state.set_state(ExpenseEditStates.waiting_for_shares)
+    await state.update_data(
+        edit_expense_id=exp_id,
+        edit_group_id=group_id,
+        selected_shares=selected_uids
+    )
+
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+    text = (
+        f"👥 <b>ویرایش افراد سهیم در هزینه «{safe(expense['title'])}»</b> 🌸\n\n"
+        f"💰 مبلغ کل: <b>{format_amount(expense['amount'])}</b>\n\n"
+        f"{safe(calling_name)} قشنگم، اعضایی که در این هزینه شریک هستند را انتخاب کن:\n"
+        "<i>(با زدن روی نام هر فرد می‌توانید او را از دنگ این هزینه حذف یا اضافه کنید)</i>"
+    )
+    markup = kb.expense_edit_shares_keyboard(exp_id, group_id, members, set(selected_uids))
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("exp:ed_shtg:"))
+async def handle_toggle_edit_expense_share(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    exp_id = int(parts[2])
+    group_id = int(parts[3])
+    member_id = int(parts[4])
+
+    data = await state.get_data()
+    selected_list = data.get("selected_shares", [])
+    selected_set = set(selected_list)
+
+    if member_id in selected_set:
+        selected_set.remove(member_id)
+    else:
+        selected_set.add(member_id)
+
+    await state.update_data(selected_shares=list(selected_set))
+    members = await db.get_group_members(group_id)
+    markup = kb.expense_edit_shares_keyboard(exp_id, group_id, members, selected_set)
+    await callback.message.edit_reply_markup(reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("exp:ed_shall:"))
+async def handle_all_edit_expense_share(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    exp_id = int(parts[2])
+    group_id = int(parts[3])
+
+    members = await db.get_group_members(group_id)
+    all_uids = [m["id"] for m in members]
+
+    data = await state.get_data()
+    current_selected = set(data.get("selected_shares", []))
+    if len(current_selected) == len(all_uids):
+        new_set = set()
+    else:
+        new_set = set(all_uids)
+
+    await state.update_data(selected_shares=list(new_set))
+    markup = kb.expense_edit_shares_keyboard(exp_id, group_id, members, new_set)
+    await callback.message.edit_reply_markup(reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("exp:ed_shdone:"))
+async def handle_done_edit_expense_share(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    exp_id = int(parts[2])
+    group_id = int(parts[3])
+
+    data = await state.get_data()
+    selected_ids = data.get("selected_shares", [])
+    if not selected_ids:
+        await callback.answer("⚠️ حداقل یک نفر باید در دنگ سهیم باشد جان دلم!", show_alert=True)
+        return
+
+    success, err = await db.update_expense_participants(exp_id, group_id, selected_ids)
+    await state.clear()
+    if not success:
+        await callback.answer(err or "خطا در ویرایش افراد سهیم!", show_alert=True)
+        return
+
+    await callback.answer("✅ افراد سهیم با موفقیت تغییر کردند و دنگ مجدداً محاسبه شد! 🌸", show_alert=True)
+    await handle_view_single_expense(callback, state=None)
 
 
 @router.message(ExpenseEditStates.waiting_for_new_amount)

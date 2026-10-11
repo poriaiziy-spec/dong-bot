@@ -654,6 +654,76 @@ async def handle_shopping_buy_lump_prompt(callback: CallbackQuery, state: FSMCon
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
 
 
+async def finalize_shopping_expense(callback: CallbackQuery, state: FSMContext, group_id: int, selected_ids: list[int]):
+    """ثبت نهایی خرید به عنوان هزینه و تقسیم دنگ بین اعضای انتخاب‌شده"""
+    data = await state.get_data()
+    buyer_id = data.get("buyer_id", callback.from_user.id)
+    total_amount = data.get("total_amount", 0)
+    items_to_price = data.get("items_to_price", [])
+    collected_prices = data.get("collected_prices", {})
+
+    if not total_amount or not selected_ids:
+        await callback.answer("⚠️ اطلاعات خرید منقضی شده یا فردی انتخاب نشده است!", show_alert=True)
+        return
+
+    members = await db.get_group_members(group_id)
+    m_count = len(selected_ids)
+    base_share = total_amount // m_count
+    rem = total_amount % m_count
+    shares = {}
+    for idx, uid in enumerate(selected_ids):
+        shares[uid] = base_share + (1 if idx < rem else 0)
+
+    names_summary = "، ".join(it["item_name"] for it in items_to_price)
+    title = f"خرید خونه ({names_summary[:36]})"
+
+    exp_id = await db.add_expense(group_id, buyer_id, title, total_amount, shares)
+    del_ids = [it["id"] for it in items_to_price]
+    await db.mark_shopping_items_bought(del_ids, buyer_id)
+
+    await state.clear()
+    await db.cleanup_chat_history(callback.bot, callback.from_user.id)
+
+    buyer_name = await db.get_user_calling_name(buyer_id) or "خریدار محترم"
+    
+    if collected_prices:
+        item_rows = "".join(f"• {safe(it['item_name'])} ({format_quantity(it['quantity'])}): <b>{format_amount(collected_prices.get(str(it['id']), 0))}</b>\n" for it in items_to_price)
+    else:
+        item_rows = "".join(f"• {safe(it['item_name'])} ({format_quantity(it['quantity'])})\n" for it in items_to_price)
+
+    involved_names = [
+        safe(m.get("display_name") or m.get("nickname") or m["full_name"]) 
+        for m in members if m["id"] in selected_ids
+    ]
+    involved_text = "، ".join(involved_names)
+
+    receipt_text = (
+        f"🎉 <b>خرید خونه با موفقیت ثبت شد و دنگ آن محاسبه گردید!</b> 🧾✨\n\n"
+        f"🛍️ <b>اقلام خریداری‌شده ({len(items_to_price)} قلم):</b>\n"
+        f"{item_rows}\n"
+        f"💰 <b>مجموع کل فاکتور: {format_amount(total_amount)}</b>\n"
+        f"👤 <b>خریدار:</b> {safe(buyer_name)}\n"
+        f"👥 <b>افراد سهیم ({m_count} نفر):</b> {involved_text}\n"
+        f"💵 <b>سهم هر یک از اعضای سهیم:</b> <b>{format_amount(base_share)}</b>\n\n"
+        "🌸 <i>اقلام خریداری‌شده به عنوان خریدهای انجام‌شده علامت خوردند. دست خریدار پر برکت!</i> ❤️"
+    )
+    sent = await callback.message.answer(
+        receipt_text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📢 اطلاع‌رسانی خرید به اعضای گروه", callback_data=f"shop:bnotif:{exp_id}:{group_id}")],
+            [InlineKeyboardButton(text="🛒 مشاهده لیست خریدهای خونه", callback_data=f"shop:view:{group_id}")],
+            [InlineKeyboardButton(text="📊 وضعیت حساب‌ها و تراز مالی", callback_data=f"grp:report:{group_id}")],
+            [InlineKeyboardButton(text="🏠 بازگشت به منوی دورهمی", callback_data=f"grp:view:{group_id}")]
+        ])
+    )
+    await db.record_chat_message(callback.from_user.id, sent.message_id)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+
 @router.message(ShoppingItemStates.waiting_for_lump_sum)
 async def handle_shopping_lump_sum(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -679,47 +749,32 @@ async def handle_shopping_lump_sum(message: Message, state: FSMContext):
             pass
         return
 
-    # ثبت به عنوان هزینه گروه و تقسیم دنگ
     members = await db.get_group_members(group_id)
     if not members:
         members = [{"id": buyer_id}]
 
-    m_count = len(members)
-    base_share = total_amount // m_count
-    rem = total_amount % m_count
-    shares = {}
-    for idx, m in enumerate(members):
-        shares[m["id"]] = base_share + (1 if idx < rem else 0)
+    all_uids = [m["id"] for m in members]
+    await state.set_state(ShoppingItemStates.waiting_for_shares)
+    await state.update_data(
+        total_amount=total_amount,
+        group_id=group_id,
+        buyer_id=buyer_id,
+        items_to_price=items_to_price,
+        collected_prices={},
+        selected_shares=all_uids
+    )
 
-    names_summary = "، ".join(it["item_name"] for it in items_to_price)
-    title = f"خرید خونه ({names_summary[:36]})"
-
-    exp_id = await db.add_expense(group_id, buyer_id, title, total_amount, shares)
-    del_ids = [it["id"] for it in items_to_price]
-    await db.mark_shopping_items_bought(del_ids, buyer_id)
-
-    await state.clear()
     await db.cleanup_chat_history(message.bot, user_id)
-
-    buyer_name = await db.get_user_calling_name(buyer_id) or "خریدار محترم"
-    receipt_text = (
-        f"🎉 <b>خرید خونه با موفقیت ثبت شد و دنگ آن محاسبه گردید!</b> 🧾✨\n\n"
-        f"🛍️ <b>اقلام خریداری‌شده ({len(items_to_price)} قلم):</b>\n"
-        + "".join(f"• {safe(it['item_name'])} ({format_quantity(it['quantity'])})\n" for it in items_to_price)
-        + f"\n💰 <b>مجموع کل فاکتور: {format_amount(total_amount)}</b>\n"
-        f"👤 <b>خریدار:</b> {safe(buyer_name)}\n"
-        f"👥 <b>سهم هر یک از اعضا ({m_count} نفر):</b> <b>{format_amount(base_share)}</b>\n\n"
-        "🌸 <i>اقلام خریداری‌شده به عنوان خریدهای انجام‌شده علامت خوردند. دست خریدار پر برکت!</i> ❤️"
+    prompt_text = (
+        f"👥 <b>چه کسانی در هزینه این خرید سهیم هستند؟</b> 🧺✨\n\n"
+        f"💰 <b>مجموع کل فاکتور: {format_amount(total_amount)}</b>\n\n"
+        f"{safe(calling_name)} قشنگم، اعضایی که در این خرید شریک هستند را مشخص کن (پیش‌فرض: همه اعضا):\n"
+        "<i>(با زدن روی نام هر فرد می‌توانید او را از دنگ این خرید حذف یا اضافه کنید)</i>"
     )
     sent = await message.answer(
-        receipt_text,
+        prompt_text,
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📢 اطلاع‌رسانی خرید به اعضای گروه", callback_data=f"shop:bnotif:{exp_id}:{group_id}")],
-            [InlineKeyboardButton(text="🛒 مشاهده لیست خریدهای خونه", callback_data=f"shop:view:{group_id}")],
-            [InlineKeyboardButton(text="📊 وضعیت حساب‌ها و تراز مالی", callback_data=f"grp:report:{group_id}")],
-            [InlineKeyboardButton(text="🏠 بازگشت به منوی دورهمی", callback_data=f"grp:view:{group_id}")]
-        ])
+        reply_markup=kb.shopping_shares_keyboard(group_id, members, set(all_uids))
     )
     await db.record_chat_message(user_id, sent.message_id)
     try:
@@ -785,54 +840,92 @@ async def handle_shopping_item_price_batch(message: Message, state: FSMContext):
         await db.record_chat_message(user_id, sent.message_id)
         return
 
-    # تمام اقلام قیمت‌گذاری شدند! محاسبه جمع کل و ثبت دنگ
+    # تمام اقلام قیمت‌گذاری شدند! مشخص کردن اعضای سهیم در دنگ
     total_amount = sum(collected_prices.values())
     members = await db.get_group_members(group_id)
     if not members:
         members = [{"id": buyer_id}]
 
-    m_count = len(members)
-    base_share = total_amount // m_count
-    rem = total_amount % m_count
-    shares = {}
-    for idx, m in enumerate(members):
-        shares[m["id"]] = base_share + (1 if idx < rem else 0)
+    all_uids = [m["id"] for m in members]
+    await state.set_state(ShoppingItemStates.waiting_for_shares)
+    await state.update_data(
+        total_amount=total_amount,
+        group_id=group_id,
+        buyer_id=buyer_id,
+        items_to_price=items_to_price,
+        collected_prices=collected_prices,
+        selected_shares=all_uids
+    )
 
-    names_summary = "، ".join(it["item_name"] for it in items_to_price)
-    title = f"خرید خونه ({names_summary[:36]})"
-
-    exp_id = await db.add_expense(group_id, buyer_id, title, total_amount, shares)
-    del_ids = [it["id"] for it in items_to_price]
-    await db.mark_shopping_items_bought(del_ids, buyer_id)
-
-    await state.clear()
-
-    buyer_name = await db.get_user_calling_name(buyer_id) or "خریدار محترم"
-    item_rows = ""
-    for it in items_to_price:
-        p = collected_prices.get(str(it["id"]), 0)
-        item_rows += f"• {safe(it['item_name'])} ({format_quantity(it['quantity'])}): <b>{format_amount(p)}</b>\n"
-
-    receipt_text = (
-        f"🎉 <b>خرید خونه با موفقیت ثبت شد و دنگ آن بین اعضا محاسبه گردید!</b> 🧾✨\n\n"
-        f"🛍️ <b>اقلام خریداری‌شده:</b>\n"
-        f"{item_rows}\n"
-        f"💰 <b>مجموع کل فاکتور: {format_amount(total_amount)}</b>\n"
-        f"👤 <b>خریدار:</b> {safe(buyer_name)}\n"
-        f"👥 <b>سهم هر یک از اعضا ({m_count} نفر):</b> <b>{format_amount(base_share)}</b>\n\n"
-        "🌸 <i>اقلام خریداری‌شده به عنوان خریدهای انجام‌شده علامت خوردند. دست خریدار پر برکت!</i> ❤️"
+    prompt_text = (
+        f"👥 <b>چه کسانی در هزینه این خرید سهیم هستند؟</b> 🧺✨\n\n"
+        f"💰 <b>مجموع کل فاکتور: {format_amount(total_amount)}</b>\n\n"
+        f"{safe(calling_name)} قشنگم، اعضایی که در این خرید شریک هستند را مشخص کن (پیش‌فرض: همه اعضا):\n"
+        "<i>(با زدن روی نام هر فرد می‌توانید او را از دنگ این خرید حذف یا اضافه کنید)</i>"
     )
     sent = await message.answer(
-        receipt_text,
+        prompt_text,
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📢 اطلاع‌رسانی خرید به اعضای گروه", callback_data=f"shop:bnotif:{exp_id}:{group_id}")],
-            [InlineKeyboardButton(text="🛒 مشاهده لیست خریدهای خونه", callback_data=f"shop:view:{group_id}")],
-            [InlineKeyboardButton(text="📊 وضعیت حساب‌ها و تراز مالی", callback_data=f"grp:report:{group_id}")],
-            [InlineKeyboardButton(text="🏠 بازگشت به منوی دورهمی", callback_data=f"grp:view:{group_id}")]
-        ])
+        reply_markup=kb.shopping_shares_keyboard(group_id, members, set(all_uids))
     )
     await db.record_chat_message(user_id, sent.message_id)
+
+
+@router.callback_query(F.data.startswith("shop:sh_tg:"))
+async def handle_shopping_share_toggle(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    member_id = int(parts[3])
+
+    data = await state.get_data()
+    selected_list = data.get("selected_shares", [])
+    selected_set = set(selected_list)
+
+    if member_id in selected_set:
+        selected_set.remove(member_id)
+    else:
+        selected_set.add(member_id)
+
+    await state.update_data(selected_shares=list(selected_set))
+    members = await db.get_group_members(group_id)
+    markup = kb.shopping_shares_keyboard(group_id, members, selected_set)
+    await callback.message.edit_reply_markup(reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("shop:sh_all:"))
+async def handle_shopping_share_all(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+
+    members = await db.get_group_members(group_id)
+    all_uids = [m["id"] for m in members]
+
+    data = await state.get_data()
+    current_selected = set(data.get("selected_shares", []))
+    if len(current_selected) == len(all_uids):
+        new_set = set()
+    else:
+        new_set = set(all_uids)
+
+    await state.update_data(selected_shares=list(new_set))
+    markup = kb.shopping_shares_keyboard(group_id, members, new_set)
+    await callback.message.edit_reply_markup(reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("shop:sh_done:"))
+async def handle_shopping_share_done(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+
+    data = await state.get_data()
+    selected_ids = data.get("selected_shares", [])
+    if not selected_ids:
+        await callback.answer("⚠️ حداقل یک نفر باید در دنگ سهیم باشد جان دلم!", show_alert=True)
+        return
+
+    await finalize_shopping_expense(callback, state, group_id, selected_ids)
 
 
 @router.callback_query(F.data.startswith("shop:bnotif:"))
@@ -1061,6 +1154,97 @@ async def handle_shopping_edit_input_submit(message: Message, state: FSMContext)
         ])
     )
     await db.record_chat_message(user_id, sent.message_id)
+
+
+@router.callback_query(F.data.startswith("shop:ed_bulk:"))
+async def handle_shopping_edit_bulk_start(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    group_id = int(callback.data.split(":")[2])
+    items = await db.get_group_shopping_items(group_id)
+
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+    await state.clear()
+    await state.set_state(ShoppingItemStates.waiting_for_bulk_edit_text)
+    await state.update_data(group_id=group_id)
+
+    if items:
+        lines = []
+        for it in items:
+            q_str = f" {format_quantity(it['quantity'])}" if it.get("quantity") and it.get("quantity") != 1.0 else ""
+            p_str = f" {it['unit_price']}" if it.get("unit_price") and it.get("unit_price") > 0 else ""
+            lines.append(f"{it['item_name']}{p_str}{q_str}")
+        current_text = "\n".join(lines)
+    else:
+        current_text = "شیر ۲ تا\nنان سنگک\nپنیر صباح 45000 ۲"
+
+    text = (
+        f"📝 <b>ویرایش متنی یکجای لیست خریدهای خونه</b> 🧺✨\n\n"
+        f"{safe(calling_name)} قشنگم، متن فعلی لیست خرید اینجاست:\n\n"
+        f"<code>{safe(current_text)}</code>\n\n"
+        "می‌تونی متن بالا رو کپی کنی، هر قلمی خواستی کم، زیاد یا اصلاح کنی و برام بفرستی تا کل لیست خرید بر اساس ویرایش شما به‌روز بشه! 🌸\n"
+        "<i>(هر قلم در یک سطر)</i>"
+    )
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ انصراف", callback_data=f"shop:view:{group_id}")]
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+
+
+@router.message(ShoppingItemStates.waiting_for_bulk_edit_text)
+async def handle_shopping_bulk_edit_submit(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    calling_name = await db.get_user_calling_name(user_id) or "جان دلم"
+    data = await state.get_data()
+    group_id = data.get("group_id")
+
+    raw_text = (message.text or "").strip()
+    parsed_items = parse_bulk_shopping_text(raw_text)
+
+    if not parsed_items:
+        sent = await message.answer(
+            f"⚠️ هیچ قلم معتبری در متن ارسال‌شده یافت نشد {safe(calling_name)} جانم! لطفاً متن لیست خرید را بفرست:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ انصراف", callback_data=f"shop:view:{group_id}")]
+            ])
+        )
+        await db.record_chat_message(user_id, sent.message_id)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        return
+
+    # جایگزینی کل اقلام پندینگ با اقلام جدید
+    await db.clear_group_shopping_items(group_id)
+    inserted_ids = await db.add_shopping_items_bulk(group_id, user_id, parsed_items)
+
+    await state.clear()
+    await db.cleanup_chat_history(message.bot, user_id)
+
+    item_lines = []
+    for idx, it in enumerate(parsed_items, 1):
+        q_str = f" ({format_quantity(it['quantity'])})" if it["quantity"] != 1.0 else ""
+        item_lines.append(f"{idx}. ⭕ <b>{safe(it['item_name'])}</b>{q_str}")
+
+    summary_text = (
+        f"✅ <b>لیست خریدهای خونه با موفقیت ویرایش و به‌روزرسانی شد {safe(calling_name)} جانم!</b> 🧺🌸\n\n"
+        f"📌 تعداد اقلام فعلی: <b>{len(inserted_ids)} قلم</b>\n\n"
+        + "\n".join(item_lines[:15]) + "\n\n"
+        "هر یک از اعضا می‌توانند این لیست را مشاهده، ویرایش یا موقع خرید تسویه کنند."
+    )
+    sent = await message.answer(
+        summary_text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 مشاهده لیست خریدهای خونه", callback_data=f"shop:view:{group_id}")],
+            [InlineKeyboardButton(text="🛍️ من خریدم (ثبت دنگ)", callback_data=f"shop:bmenu:{group_id}")]
+        ])
+    )
+    await db.record_chat_message(user_id, sent.message_id)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 # ===========================================================================

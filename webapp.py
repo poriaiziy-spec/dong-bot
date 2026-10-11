@@ -1297,9 +1297,18 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             <div id="settleShoppingItemsList" style="max-height:220px; overflow-y:auto; margin-bottom:16px; display:flex; flex-direction:column; gap:10px;">
             </div>
 
-            <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:12px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:12px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
                 <span style="color:var(--text-sub); font-size:0.88rem;">💳 مجموع کل فاکتور:</span>
                 <strong id="settleShoppingGrandTotal" style="color:var(--emerald-main); font-size:1.15rem;">۰ تومان</strong>
+            </div>
+
+            <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:10px 14px; margin-bottom:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="font-size:0.84rem; font-weight:700; color:var(--gold-primary);">👥 افراد سهیم در دنگ این خرید:</span>
+                    <button type="button" onclick="toggleAllSettleShoppingMembers()" style="background:transparent; border:none; color:var(--text-sub); font-size:0.75rem; cursor:pointer; text-decoration:underline;">انتخاب / لغو همه</button>
+                </div>
+                <div id="settleShoppingMembersList" class="members-checklist" style="max-height:110px; overflow-y:auto; display:flex; flex-wrap:wrap; gap:6px;">
+                </div>
             </div>
 
             <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:10px 14px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="toggleSettleNotifyGroup()">
@@ -1390,6 +1399,54 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 </button>
                 <button class="del-btn" style="flex:1; height:auto; border-radius:var(--radius-md); font-weight:700; background:rgba(255,255,255,0.06); border-color:var(--border-glass); color:var(--text-sub);" onclick="closeBulkShoppingModal()">
                     <span>انصراف</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال اختصاصی ۶: ویرایش هزینه و افراد سهیم در دنگ -->
+    <div class="modal-overlay" id="editExpenseModal" onclick="closeModalOnBg(event, 'editExpenseModal')">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>✏️</span>
+                    <span>ویرایش هزینه و افراد سهیم</span>
+                </div>
+                <button class="modal-close-btn" onclick="closeEditExpenseModal()">✕</button>
+            </div>
+            
+            <p style="font-size:0.82rem; color:var(--text-sub); margin-bottom:14px; line-height:1.6;">
+                مبلغ هزینه یا افراد سهیم در دنگ را ویرایش نمایید تا سهم‌ها مجدداً محاسبه شوند:
+            </p>
+
+            <input type="hidden" id="editExpId">
+            <input type="hidden" id="editExpGroupId">
+
+            <div class="form-group" style="margin-bottom:12px;">
+                <label style="font-size:0.78rem; color:var(--text-sub); margin-bottom:4px; display:block;">عنوان هزینه:</label>
+                <div id="editExpTitleDisplay" style="font-size:0.92rem; font-weight:800; color:var(--text-main); padding:8px 12px; background:var(--bg-inner); border-radius:var(--radius-sm); border:1px solid var(--border-glass);"></div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:14px;">
+                <label style="font-size:0.78rem; color:var(--text-sub); margin-bottom:4px; display:block;">مبلغ کل (تومان):</label>
+                <input type="number" id="editExpAmountInput" class="form-control" placeholder="مبلغ به تومان">
+            </div>
+
+            <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:10px 14px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="font-size:0.84rem; font-weight:700; color:var(--gold-primary);">👥 افراد سهیم در دنگ:</span>
+                    <button type="button" onclick="toggleAllEditExpMembers()" style="background:transparent; border:none; color:var(--text-sub); font-size:0.75rem; cursor:pointer; text-decoration:underline;">انتخاب / لغو همه</button>
+                </div>
+                <div id="editExpMembersList" class="members-checklist" style="max-height:130px; overflow-y:auto; display:flex; flex-wrap:wrap; gap:6px;">
+                </div>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button class="btn-primary" style="flex:2;" onclick="submitEditExpense()">
+                    <span>💾 ذخیره و محاسبه مجدد دنگ ✨</span>
+                </button>
+                <button class="del-btn" style="flex:1; height:auto; border-radius:var(--radius-md); font-weight:700; background:rgba(244,63,94,0.1); border-color:var(--rose-glow); color:var(--rose-main);" onclick="submitDeleteExpense()">
+                    <span>🗑️ حذف</span>
                 </button>
             </div>
         </div>
@@ -1692,13 +1749,17 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             const expenses = currentGroup.expenses || [];
             if (expenses.length > 0) {
                 expenses.forEach(e => {
+                    const sharesCount = (e.shares && e.shares.length) ? `${e.shares.length} نفر سهیم` : 'سهیم بین اعضا';
                     groupHtml += `
-                        <div class="item-row">
+                        <div class="item-row" style="cursor:pointer;" onclick="openEditExpenseModal(${e.id}, ${currentGroup.id})">
                             <div style="display:flex; flex-direction:column; gap:2px;">
                                 <div style="font-size:0.94rem; font-weight:800;">${e.title}</div>
-                                <div style="font-size:0.78rem; color:var(--text-sub);">پرداخت‌کننده: <strong>${e.payer_name}</strong></div>
+                                <div style="font-size:0.78rem; color:var(--text-sub);">پرداخت‌کننده: <strong>${e.payer_name}</strong> • ${sharesCount}</div>
                             </div>
-                            <div class="item-price">${formatToman(e.amount)}</div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div class="item-price">${formatToman(e.amount)}</div>
+                                <button class="del-btn" onclick="event.stopPropagation(); openEditExpenseModal(${e.id}, ${currentGroup.id})" style="color:var(--gold-primary); border-color:var(--gold-primary); background:rgba(217,160,82,0.1); width:28px; height:28px; font-size:0.8rem;" title="ویرایش هزینه">✏️</button>
+                            </div>
                         </div>
                     `;
                 });
@@ -2114,12 +2175,36 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
 
             document.getElementById('settleShoppingItemsList').innerHTML = html;
             calcSettleModalTotal();
+
+            // پر کردن لیست اعضای سهیم در این خرید
+            const groupId = parseInt(document.getElementById('shoppingGroupSelect').value);
+            const group = appState.userData?.groups?.find(g => g.id === groupId);
+            const members = group?.members || [{ id: appState.userId || 1 }];
+            let mHtml = '';
+            members.forEach(m => {
+                const mName = m.display_name || m.nickname || m.calling_name || m.full_name || 'عضو';
+                mHtml += `
+                    <label class="member-checkbox-label" style="font-size:0.8rem; padding:6px 10px;">
+                        <input type="checkbox" class="settle-shop-member-cb" value="${m.id}" checked>
+                        <span>${mName}</span>
+                    </label>
+                `;
+            });
+            const mListEl = document.getElementById('settleShoppingMembersList');
+            if (mListEl) mListEl.innerHTML = mHtml;
+
             document.getElementById('settleShoppingModal').classList.add('active');
             if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
         }
 
         function closeSettleShoppingModal() {
             document.getElementById('settleShoppingModal').classList.remove('active');
+        }
+
+        function toggleAllSettleShoppingMembers() {
+            const cbs = document.querySelectorAll('.settle-shop-member-cb');
+            const allChecked = Array.from(cbs).every(cb => cb.checked);
+            cbs.forEach(cb => cb.checked = !allChecked);
         }
 
         function calcSettleModalTotal() {
@@ -2144,20 +2229,24 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 return;
             }
 
+            const checkedMembers = Array.from(document.querySelectorAll('.settle-shop-member-cb:checked'));
+            if (checkedMembers.length === 0) {
+                showToast('⚠️ حداقل باید یک نفر در دنگ این خرید سهیم باشد');
+                return;
+            }
+            const memberIds = checkedMembers.map(cb => parseInt(cb.value));
+
             const inputs = Array.from(document.querySelectorAll('.settle-item-price-input'));
             const itemNames = inputs.map(i => i.dataset.name).join('، ');
             const title = 'خرید خونه (' + itemNames.substring(0, 36) + ')';
             const groupId = parseInt(document.getElementById('shoppingGroupSelect').value);
-            const group = appState.userData?.groups?.find(g => g.id === groupId);
-            const members = group?.members || [{ id: appState.userId || 1 }];
 
-            // تقسیم دنگ مساوی
-            const baseShare = Math.floor(total / members.length);
-            let rem = total - (baseShare * members.length);
+            // تقسیم دنگ مساوی فقط بین اعضای انتخاب‌شده
+            const baseShare = Math.floor(total / memberIds.length);
+            let rem = total - (baseShare * memberIds.length);
             const shares = {};
-            members.forEach(m => {
-                shares[m.id] = baseShare + (rem > 0 ? 1 : 0);
-                if (rem > 0) rem--;
+            memberIds.forEach((uid, idx) => {
+                shares[uid] = baseShare + (idx < rem ? 1 : 0);
             });
 
             try {
@@ -2554,6 +2643,110 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
         function closeModalOnBg(e, modalId) {
             if (e.target && e.target.id === modalId) {
                 document.getElementById(modalId).classList.remove('active');
+            }
+        }
+
+        // مدیریت مودال ویرایش هزینه و افراد سهیم
+        function openEditExpenseModal(expId, groupId) {
+            const group = appState.userData?.groups?.find(g => g.id === groupId);
+            const exp = group?.expenses?.find(e => e.id === expId);
+            if (!group || !exp) return;
+
+            document.getElementById('editExpId').value = expId;
+            document.getElementById('editExpGroupId').value = groupId;
+            document.getElementById('editExpTitleDisplay').innerText = exp.title;
+            document.getElementById('editExpAmountInput').value = exp.amount;
+
+            const shareUids = new Set((exp.shares || []).map(s => s.user_id));
+            let mHtml = '';
+            (group.members || []).forEach(m => {
+                const isChecked = shareUids.has(m.id) || shareUids.size === 0;
+                const mName = m.display_name || m.nickname || m.calling_name || m.full_name || 'عضو';
+                mHtml += `
+                    <label class="member-checkbox-label" style="font-size:0.8rem; padding:6px 10px;">
+                        <input type="checkbox" class="edit-exp-member-cb" value="${m.id}" ${isChecked ? 'checked' : ''}>
+                        <span>${mName}</span>
+                    </label>
+                `;
+            });
+            document.getElementById('editExpMembersList').innerHTML = mHtml;
+            document.getElementById('editExpenseModal').classList.add('active');
+            if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function closeEditExpenseModal() {
+            document.getElementById('editExpenseModal').classList.remove('active');
+        }
+
+        function toggleAllEditExpMembers() {
+            const cbs = document.querySelectorAll('.edit-exp-member-cb');
+            const allChecked = Array.from(cbs).every(cb => cb.checked);
+            cbs.forEach(cb => cb.checked = !allChecked);
+        }
+
+        async function submitEditExpense() {
+            const expId = parseInt(document.getElementById('editExpId').value);
+            const groupId = parseInt(document.getElementById('editExpGroupId').value);
+            const amount = parseInt(document.getElementById('editExpAmountInput').value) || 0;
+            const checked = Array.from(document.querySelectorAll('.edit-exp-member-cb:checked'));
+
+            if (amount <= 0) {
+                showToast('⚠️ مبلغ هزینه باید بیشتر از صفر باشد');
+                return;
+            }
+            if (checked.length === 0) {
+                showToast('⚠️ حداقل باید یک نفر در این هزینه سهیم باشد');
+                return;
+            }
+
+            const participantIds = checked.map(cb => parseInt(cb.value));
+
+            try {
+                const res = await fetch('/api/app/edit_expense', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        expense_id: expId,
+                        group_id: groupId,
+                        amount: amount,
+                        participant_ids: participantIds
+                    })
+                });
+                const resData = await res.json();
+                if (resData.success) {
+                    showToast('✅ هزینه و افراد سهیم با موفقیت به‌روزرسانی شدند 🌸');
+                    closeEditExpenseModal();
+                    await loadData();
+                    renderGroupsTab();
+                } else {
+                    showToast(resData.error || 'خطا در ویرایش هزینه');
+                }
+            } catch(e) {
+                showToast('خطای شبکه در ویرایش هزینه');
+            }
+        }
+
+        async function submitDeleteExpense() {
+            const expId = parseInt(document.getElementById('editExpId').value);
+            const groupId = parseInt(document.getElementById('editExpGroupId').value);
+
+            try {
+                const res = await fetch('/api/app/delete_expense', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ expense_id: expId, group_id: groupId })
+                });
+                const resData = await res.json();
+                if (resData.success) {
+                    showToast('هزینه با موفقیت حذف شد');
+                    closeEditExpenseModal();
+                    await loadData();
+                    renderGroupsTab();
+                } else {
+                    showToast('خطا در حذف هزینه');
+                }
+            } catch(e) {
+                showToast('خطای شبکه در حذف هزینه');
             }
         }
 
@@ -3037,12 +3230,50 @@ async def api_notify_shopping_purchase_handler(request: web.Request) -> web.Resp
         return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
 
 
+async def api_edit_expense_handler(request: web.Request) -> web.Response:
+    """ویرایش مبلغ و افراد سهیم در هزینه از طریق مینی‌اپ"""
+    try:
+        body = await request.json()
+        expense_id = int(body["expense_id"])
+        group_id = int(body["group_id"])
+        amount = int(body.get("amount", 0)) if body.get("amount") else None
+        participant_ids = [int(x) for x in body.get("participant_ids", []) if str(x).isdigit()]
+
+        if not participant_ids:
+            return web.json_response({"success": False, "error": "حداقل یک نفر باید در دنگ سهیم باشد"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+        success, err = await db.update_expense_participants(expense_id, group_id, participant_ids, new_amount=amount)
+        if not success:
+            return web.json_response({"success": False, "error": err or "خطا در ویرایش هزینه"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+        return web.json_response({"success": True}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"api_edit_expense_handler error: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
+async def api_delete_expense_handler(request: web.Request) -> web.Response:
+    """حذف هزینه از طریق مینی‌اپ"""
+    try:
+        body = await request.json()
+        expense_id = int(body["expense_id"])
+        group_id = int(body["group_id"])
+
+        success = await db.delete_expense(expense_id, group_id)
+        return web.json_response({"success": bool(success)}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"api_delete_expense_handler error: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
 def setup_webapp_routes(app: web.Application):
     """ثبت تمام مسیرهای مربوط به مینی‌اپ در اپلیکیشن aiohttp"""
     app.router.add_get("/app", miniapp_page_handler)
     app.router.add_get("/api/app/users", api_users_handler)
     app.router.add_get("/api/app/user_data", api_user_data_handler)
     app.router.add_post("/api/app/add_expense", api_add_expense_handler)
+    app.router.add_post("/api/app/edit_expense", api_edit_expense_handler)
+    app.router.add_post("/api/app/delete_expense", api_delete_expense_handler)
     app.router.add_post("/api/app/add_shopping_item", api_add_shopping_item_handler)
     app.router.add_post("/api/app/add_shopping_items_bulk", api_add_shopping_items_bulk_handler)
     app.router.add_post("/api/app/edit_shopping_item", api_edit_shopping_item_handler)

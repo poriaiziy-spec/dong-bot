@@ -111,7 +111,7 @@ def shopping_list_keyboard(group_id: int, has_items: bool = False) -> InlineKeyb
             InlineKeyboardButton(text="🛍️ من خریدم (انتخاب و ثبت دنگ)", callback_data=f"shop:bmenu:{group_id}")
         ])
         keyboard.append([
-            InlineKeyboardButton(text="✏️ ویرایش قلم", callback_data=f"shop:ed_menu:{group_id}"),
+            InlineKeyboardButton(text="✏️ ویرایش لیست خرید", callback_data=f"shop:ed_menu:{group_id}"),
             InlineKeyboardButton(text="🗑️ حذف قلم", callback_data=f"shop:del_menu:{group_id}")
         ])
         keyboard.append([
@@ -159,8 +159,12 @@ def shopping_buy_items_keyboard(items: list[dict], group_id: int, selected_ids: 
 
 
 def shopping_edit_items_keyboard(items: list[dict], group_id: int) -> InlineKeyboardMarkup:
-    """کیبورد انتخاب قلم جهت ویرایش"""
-    keyboard = []
+    """کیبورد انتخاب قلم جهت ویرایش یا ویرایش متنی یکجا"""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="📝 ویرایش متنی یکجای لیست خرید", callback_data=f"shop:ed_bulk:{group_id}")
+        ]
+    ]
     for it in items[:15]:
         qty_str = f" ({it['quantity']})" if it.get("quantity") and it.get("quantity") != 1 else ""
         name_short = it['item_name'][:18]
@@ -472,17 +476,79 @@ def expense_history_keyboard(expenses: list[dict], group_id: int) -> InlineKeybo
 
 
 def single_expense_keyboard(expense_id: int, group_id: int, can_edit: bool = False) -> InlineKeyboardMarkup:
-    """مشاهده جزئیات، ویرایش مبلغ یا حذف یک هزینه"""
+    """مشاهده جزئیات، ویرایش مبلغ، ویرایش افراد سهیم یا حذف یک هزینه"""
     keyboard = []
     if can_edit:
         keyboard.append([
-            InlineKeyboardButton(text="✏️ ویرایش مبلغ هزینه", callback_data=f"exp:edit_amt:{expense_id}:{group_id}")
+            InlineKeyboardButton(text="✏️ ویرایش مبلغ هزینه", callback_data=f"exp:edit_amt:{expense_id}:{group_id}"),
+            InlineKeyboardButton(text="👥 ویرایش افراد سهیم در دنگ", callback_data=f"exp:edit_sh:{expense_id}:{group_id}")
         ])
     keyboard.append([
         InlineKeyboardButton(text="🗑️ حذف این هزینه", callback_data=f"exp:del:{expense_id}:{group_id}")
     ])
     keyboard.append([
         InlineKeyboardButton(text="🔙 بازگشت به تاریخچه", callback_data=f"grp:history:{group_id}")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def expense_edit_shares_keyboard(
+    expense_id: int,
+    group_id: int,
+    members: list[dict],
+    selected_ids: set[int]
+) -> InlineKeyboardMarkup:
+    """کیبورد ویرایش افراد سهیم در هزینه ثبت‌شده"""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="⚡ انتخاب همه اعضای گروه", callback_data=f"exp:ed_shall:{expense_id}:{group_id}")
+        ]
+    ]
+    for m in members:
+        is_checked = m["id"] in selected_ids
+        icon = "✅" if is_checked else "⬜"
+        name_label = m.get("display_name", m.get("nickname", m["full_name"]))
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{icon} {name_label}",
+                callback_data=f"exp:ed_shtg:{expense_id}:{group_id}:{m['id']}"
+            )
+        ])
+    keyboard.append([
+        InlineKeyboardButton(text="💾 ذخیره و محاسبه مجدد دنگ", callback_data=f"exp:ed_shdone:{expense_id}:{group_id}")
+    ])
+    keyboard.append([
+        InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data=f"exp:view:{expense_id}:{group_id}")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def shopping_shares_keyboard(
+    group_id: int, 
+    members: list[dict], 
+    selected_ids: set[int]
+) -> InlineKeyboardMarkup:
+    """انتخاب افراد سهیم در خرید خانه قبل از محاسبه دنگ"""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="⚡ همه اعضا (تقسیم مساوی)", callback_data=f"shop:sh_all:{group_id}")
+        ]
+    ]
+    for m in members:
+        is_checked = m["id"] in selected_ids
+        icon = "✅" if is_checked else "⬜"
+        name_label = m.get("display_name", m.get("nickname", m["full_name"]))
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{icon} {name_label}",
+                callback_data=f"shop:sh_tg:{group_id}:{m['id']}"
+            )
+        ])
+    keyboard.append([
+        InlineKeyboardButton(text="💾 تأیید و محاسبه دنگ خرید", callback_data=f"shop:sh_done:{group_id}")
+    ])
+    keyboard.append([
+        InlineKeyboardButton(text="❌ انصراف", callback_data=f"shop:view:{group_id}")
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 

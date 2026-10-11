@@ -327,6 +327,14 @@ async def test_all_scenarios():
     assert e1_updated["amount"] == 450000
     assert all(s["share_amount"] == 150000 for s in e1_updated["shares"])
 
+    # تست ویرایش افراد سهیم در هزینه (تغییر از ۳ نفر به ۲ نفر)
+    upd_sh_res, _ = await db.update_expense_participants(e1, grp_id, [creator_id, member_b_id])
+    assert upd_sh_res is True
+    e1_sh_updated = await db.get_expense_by_id(e1, grp_id)
+    assert len(e1_sh_updated["shares"]) == 2
+    assert set(s["user_id"] for s in e1_sh_updated["shares"]) == {creator_id, member_b_id}
+    assert e1_sh_updated["shares"][0]["share_amount"] == 225000  # ۴۵۰ هزار تقسیم بر ۲
+
     # صفر کردن حساب‌های گروه
     settled_cnt = await db.settle_group(grp_id)
     assert settled_cnt == 1
@@ -476,6 +484,8 @@ async def test_all_scenarios():
         kb.shopping_edit_items_keyboard([{"id": BIG_EXP, "item_name": "چیپس مخصوص", "total_price": BIG_AMT}], BIG_GRP),
         kb.shopping_edit_options_keyboard(BIG_EXP, BIG_GRP),
         kb.expense_amount_choice_keyboard(BIG_GRP),
+        kb.expense_edit_shares_keyboard(BIG_EXP, BIG_GRP, [{"id": BIG_USER, "full_name": "تست"}], {BIG_USER}),
+        kb.shopping_shares_keyboard(BIG_GRP, [{"id": BIG_USER, "full_name": "تست"}], {BIG_USER}),
         kb.miniapp_keyboard(),
         kb.miniapp_keyboard(BIG_GRP)
     ]
@@ -499,6 +509,10 @@ async def test_all_scenarios():
         InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="اطلاع‌رسانی خرید", callback_data=f"shop:bnotif:{BIG_EXP}:{BIG_GRP}"),
             InlineKeyboardButton(text="اطلاع‌رسانی شد", callback_data="shop:bnotif_done")
+        ]]),
+        InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="ویرایش متنی لیست", callback_data=f"shop:ed_bulk:{BIG_GRP}"),
+            InlineKeyboardButton(text="ویرایش افراد سهیم", callback_data=f"exp:edit_sh:{BIG_EXP}:{BIG_GRP}")
         ]]),
         quote_dismiss_keyboard()
     ]
@@ -581,7 +595,18 @@ async def test_all_scenarios():
         exp_json = await exp_post.json()
         assert exp_json["success"] is True
         assert exp_json["expense_id"] > 0
-        
+        t_exp_id = exp_json["expense_id"]
+
+        # آزمون ویرایش هزینه و افراد سهیم از طریق مینی‌اپ
+        exp_edit_post = await client.post("/api/app/edit_expense", json={
+            "expense_id": t_exp_id,
+            "group_id": t_grp_id,
+            "amount": 240000,
+            "participant_ids": [user_id]
+        })
+        assert exp_edit_post.status == 200
+        assert (await exp_edit_post.json())["success"] is True
+
         # ۵. آزمون فاکتور و قلم خرید مینی‌اپ
         shop_post = await client.post("/api/app/add_shopping_item", json={
             "group_id": t_grp_id,

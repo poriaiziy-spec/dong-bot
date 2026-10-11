@@ -584,12 +584,18 @@ async def get_expense_by_id(expense_id: int, group_id: int) -> dict | None:
             expense = dict(row)
 
         async with db.execute("""
-            SELECT es.user_id, es.share_amount, u.full_name, u.username
+            SELECT es.user_id, es.share_amount, u.full_name, u.username, u.calling_name, gm.nickname
             FROM expense_shares es
             JOIN users u ON es.user_id = u.id
+            LEFT JOIN group_members gm ON gm.group_id = ? AND gm.user_id = u.id
             WHERE es.expense_id = ?
-        """, (expense_id,)) as cursor_s:
-            expense["shares"] = [dict(r) for r in await cursor_s.fetchall()]
+        """, (group_id, expense_id)) as cursor_s:
+            shares = []
+            for r in await cursor_s.fetchall():
+                d = dict(r)
+                d["display_name"] = d.get("nickname") or d.get("calling_name") or d.get("full_name") or "عضو"
+                shares.append(d)
+            expense["shares"] = shares
 
         return expense
 
@@ -634,6 +640,84 @@ async def update_expense_amount(expense_id: int, group_id: int, new_amount: int)
                 SET share_amount = ? 
                 WHERE expense_id = ? AND user_id = ?
             """, (share_amt, expense_id, uid))
+
+        await db.commit()
+        schedule_cloud_backup()
+        return True, None
+
+
+async def update_expense_shares(expense_id: int, group_id: int, new_shares: dict[int, int]) -> tuple[bool, str | None]:
+    """
+    ویرایش مستقیم افراد سهیم در هزینه و به‌روزرسانی سهم‌ها
+    """
+    if not new_shares:
+        return False, "حداقل باید یک نفر در این هزینه سهیم باشد."
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # بررسی وجود هزینه و عدم تسویه
+        async with db.execute("SELECT id, amount, settled FROM expenses WHERE id = ? AND group_id = ?", (expense_id, group_id)) as cursor:
+            exp_row = await cursor.fetchone()
+            if not exp_row:
+                return False, "هزینه یافت نشد."
+            if exp_row["settled"]:
+                return False, "این هزینه قبلاً تسویه شده و قابل ویرایش نیست."
+
+        # پاک کردن سهم‌های قبلی
+        await db.execute("DELETE FROM expense_shares WHERE expense_id = ?", (expense_id,))
+
+        # درج سهم‌های جدید
+        for uid, s_amt in new_shares.items():
+            await db.execute("""
+                INSERT INTO expense_shares (expense_id, user_id, share_amount)
+                VALUES (?, ?, ?)
+            """, (expense_id, int(uid), int(s_amt)))
+
+        await db.commit()
+        schedule_cloud_backup()
+        return True, None
+
+
+async def update_expense_participants(
+    expense_id: int, 
+    group_id: int, 
+    participant_ids: list[int], 
+    new_amount: int | None = None
+) -> tuple[bool, str | None]:
+    """
+    تغییر افراد سهیم در یک هزینه و تقسیم مجدد مبلغ بین آن‌ها به صورت مساوی
+    """
+    if not participant_ids:
+        return False, "حداقل باید یک نفر در دنگ سهیم باشد."
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT id, amount, settled FROM expenses WHERE id = ? AND group_id = ?", (expense_id, group_id)) as cursor:
+            exp_row = await cursor.fetchone()
+            if not exp_row:
+                return False, "هزینه یافت نشد."
+            if exp_row["settled"]:
+                return False, "این هزینه قبلاً تسویه شده و قابل ویرایش نیست."
+
+            current_amount = exp_row["amount"]
+
+        amount = new_amount if (new_amount and new_amount > 0) else current_amount
+        if new_amount and new_amount > 0 and new_amount != current_amount:
+            await db.execute("UPDATE expenses SET amount = ? WHERE id = ? AND group_id = ?", (new_amount, expense_id, group_id))
+
+        count = len(participant_ids)
+        base_share = amount // count
+        remainder = amount % count
+
+        # حذف سهم‌های قبلی
+        await db.execute("DELETE FROM expense_shares WHERE expense_id = ?", (expense_id,))
+
+        for i, uid in enumerate(participant_ids):
+            share_amt = base_share + (remainder if i == 0 else 0)
+            await db.execute("""
+                INSERT INTO expense_shares (expense_id, user_id, share_amount)
+                VALUES (?, ?, ?)
+            """, (expense_id, int(uid), int(share_amt)))
 
         await db.commit()
         schedule_cloud_backup()
