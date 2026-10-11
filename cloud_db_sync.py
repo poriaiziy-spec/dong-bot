@@ -71,18 +71,33 @@ async def _github_api_request(endpoint: str, data: dict | None = None, method: s
 async def _do_backup(is_reset: bool = False) -> bool:
     global _last_backup_status
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
+        import database as _db_mod
+        effective_db_path = getattr(_db_mod, "DB_PATH", DB_PATH)
+        async with aiosqlite.connect(effective_db_path) as db:
             db.row_factory = aiosqlite.Row
             dump = {}
-            for table in ["users", "groups", "group_members", "expenses", "expense_shares", "daily_quotes_log", "user_cards"]:
+            for table in [
+                "users",
+                "groups",
+                "group_members",
+                "expenses",
+                "expense_shares",
+                "daily_quotes_log",
+                "user_cards",
+                "shopping_items",
+                "custom_foods",
+            ]:
                 try:
                     async with db.execute(f"SELECT * FROM {table}") as cursor:
                         rows = await cursor.fetchall()
                         dump[table] = [dict(r) for r in rows]
                 except Exception as ex:
-                    logger.error(f"خطا در خواندن جدول {table} جهت بکاپ: {ex}")
-                    # در صورت بروز خطای خواندن جدول، از ثبت بکاپ ناقص جلوگیری کن
-                    return False
+                    if "no such table" in str(ex).lower():
+                        dump[table] = []
+                    else:
+                        logger.error(f"خطا در خواندن جدول {table} جهت بکاپ: {ex}")
+                        # در صورت بروز خطای خواندن جدول، از ثبت بکاپ ناقص جلوگیری کن
+                        return False
 
         # گارد ضد پاکسازی (Anti-Data-Loss Protection):
         # بررسی وضعیت قبلی کلاد تا هرگز دیتای پر با دیتای خالی جایگزین نشود مگر با ریست دستی ادمین
@@ -100,12 +115,21 @@ async def _do_backup(is_reset: bool = False) -> bool:
                     prev_dump = prev_envelope
 
                 # اگر در جدول‌های اصلی در کلاد دیتا وجود دارد ولی در دیتابیس فعلی نیست، دیتای کلاد حفظ شود
+                db_is_empty = (len(dump.get("users", [])) == 0 and len(prev_dump.get("users", [])) > 0)
+
                 for tbl in ["users", "groups", "group_members", "user_cards", "expenses", "expense_shares"]:
                     cloud_rows = prev_dump.get(tbl, [])
                     local_rows = dump.get(tbl, [])
                     if len(cloud_rows) > 0 and len(local_rows) == 0:
                         logger.warning(f"🛡️ گارد ضد پاکسازی فعال شد: جدول {tbl} در کلاد {len(cloud_rows)} رکورد داشت و حفظ شد.")
                         dump[tbl] = cloud_rows
+
+                if db_is_empty:
+                    for tbl in ["shopping_items", "custom_foods"]:
+                        cloud_rows = prev_dump.get(tbl, [])
+                        if len(cloud_rows) > 0 and len(dump.get(tbl, [])) == 0:
+                            logger.warning(f"🛡️ گارد ضد پاکسازی فعال شد: جدول {tbl} از کلاد {len(cloud_rows)} رکورد داشت و حفظ شد.")
+                            dump[tbl] = cloud_rows
             except Exception as ex:
                 logger.warning(f"خطای بررسی گارد ضد پاکسازی: {ex}")
 
@@ -143,13 +167,14 @@ async def _do_backup(is_reset: bool = False) -> bool:
                 total_cards = len(dump.get("user_cards", []))
                 total_users = len(dump.get("users", []))
                 total_groups = len(dump.get("groups", []))
-                msg = f"🔒 بکاپ ابری ثبت شد ({total_users} کاربر، {total_cards} کارت، {total_groups} گروه)"
+                total_shopping = len(dump.get("shopping_items", []))
+                msg = f"🔒 بکاپ ابری ثبت شد ({total_users} کاربر، {total_cards} کارت، {total_groups} گروه، {total_shopping} قلم خرید)"
                 logger.info(msg)
                 _last_backup_status = {
                     "timestamp": asyncio.get_event_loop().time(),
                     "success": True,
                     "details": msg,
-                    "counts": {"users": total_users, "cards": total_cards, "groups": total_groups}
+                    "counts": {"users": total_users, "cards": total_cards, "groups": total_groups, "shopping": total_shopping}
                 }
                 return True
             else:
@@ -193,7 +218,9 @@ async def restore_from_cloud():
         else:
             dump = raw_obj
 
-        async with aiosqlite.connect(DB_PATH) as db:
+        import database as _db_mod
+        effective_db_path = getattr(_db_mod, "DB_PATH", DB_PATH)
+        async with aiosqlite.connect(effective_db_path) as db:
             await db.execute("PRAGMA foreign_keys = OFF;")
 
             for u in dump.get("users", []):
@@ -238,6 +265,38 @@ async def restore_from_cloud():
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (uc["id"], uc["user_id"], uc["card_number"], uc["bank_name"], uc.get("card_title"), uc.get("is_default", 0), uc.get("created_at")))
 
+            for s in dump.get("shopping_items", []):
+                await db.execute("""
+                    INSERT OR REPLACE INTO shopping_items (id, group_id, user_id, item_name, unit_price, quantity, total_price, is_bought, buyer_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    s["id"],
+                    s["group_id"],
+                    s["user_id"],
+                    s["item_name"],
+                    s.get("unit_price", 0),
+                    s.get("quantity", 1),
+                    s.get("total_price", 0),
+                    s.get("is_bought", 0),
+                    s.get("buyer_id"),
+                    s.get("created_at")
+                ))
+
+            for cf in dump.get("custom_foods", []):
+                await db.execute("""
+                    INSERT OR REPLACE INTO custom_foods (id, group_id, user_id, name, category, emoji, description, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    cf["id"],
+                    cf.get("group_id"),
+                    cf.get("user_id"),
+                    cf["name"],
+                    cf.get("category", "all"),
+                    cf.get("emoji", "🍽️"),
+                    cf.get("description", ""),
+                    cf.get("created_at")
+                ))
+
             # سازگاری خودکار کارت‌های تکی قبلی در جدول users
             await db.execute("""
                 INSERT OR IGNORE INTO user_cards (user_id, card_number, bank_name, is_default)
@@ -252,7 +311,8 @@ async def restore_from_cloud():
             total_cards = len(dump.get("user_cards", []))
             total_users = len(dump.get("users", []))
             total_groups = len(dump.get("groups", []))
-            logger.info(f"✅ داده‌های دیتابیس با موفقیت از کلاد بازیابی شدند ({total_users} کاربر، {total_cards} کارت، {total_groups} گروه).")
+            total_shopping = len(dump.get("shopping_items", []))
+            logger.info(f"✅ داده‌های دیتابیس با موفقیت از کلاد بازیابی شدند ({total_users} کاربر، {total_cards} کارت، {total_groups} گروه، {total_shopping} قلم خرید).")
     except Exception as e:
         logger.error(f"Restore warning: {e}")
 

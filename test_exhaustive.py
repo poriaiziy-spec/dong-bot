@@ -214,6 +214,8 @@ async def test_all_scenarios():
     # -------------------------------------------------------------
     print("\n--- [بخش ۵] آزمون یکپارچگی دیتابیس، مدیریت کارت‌ها و ارتقای پیش‌فرض ---")
     import cloud_db_sync
+    orig_backup_fn = cloud_db_sync.backup_to_cloud
+    orig_restore_fn = cloud_db_sync.restore_from_cloud
     # غیرفعال‌سازی موقت ارتباط اینترنتی برای تست داخلی
     async def mock_coro(*args, **kwargs): return True
     cloud_db_sync.backup_to_cloud = mock_coro
@@ -739,6 +741,123 @@ async def test_all_scenarios():
     # پاکسازی فایل موقت تست
     if os.path.exists(test_db_file):
         os.remove(test_db_file)
+
+    # -------------------------------------------------------------
+    # سناریو ۱۰: آزمون جامع بکاپ و بازیابی ابری اقلام خرید و غذاها
+    # -------------------------------------------------------------
+    print("\n--- [بخش ۱۰] آزمون جامع بکاپ و بازیابی ابری اقلام لیست خرید و غذاهای سفارشی ---")
+    import cloud_db_sync
+    import json
+    import base64
+
+    sync_test_db = "test_sync_vault.db"
+    sync_test_db_2 = "test_sync_vault_2.db"
+    for f in [sync_test_db, sync_test_db_2]:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+            except Exception:
+                pass
+
+    old_db_path = db.DB_PATH
+    old_sync_db_path = cloud_db_sync.DB_PATH
+    old_gh_token = cloud_db_sync.GITHUB_TOKEN
+    orig_req = cloud_db_sync._github_api_request
+
+    try:
+        cloud_db_sync.backup_to_cloud = orig_backup_fn
+        cloud_db_sync.restore_from_cloud = orig_restore_fn
+        db.restore_from_cloud = orig_restore_fn
+        db.backup_to_cloud = orig_backup_fn
+        cloud_db_sync.GITHUB_TOKEN = "ghp_mock_token_for_test_123456"
+        cloud_storage = {}
+
+        async def mock_github_api_request(endpoint, payload=None, method="GET"):
+            if method == "GET":
+                if "contents" in endpoint and cloud_storage.get("content"):
+                    return cloud_storage
+                return None
+            elif method == "PUT":
+                cloud_storage["content"] = payload["content"]
+                cloud_storage["sha"] = "test_sha_123"
+                return {"commit": {"sha": "new_sha_456"}}
+            return None
+
+        cloud_db_sync._github_api_request = mock_github_api_request
+
+        db.DB_PATH = sync_test_db
+        cloud_db_sync.DB_PATH = sync_test_db
+
+        await db.init_db()
+        await db.upsert_user(8888, "test_shopper", "خریدار تستی")
+        sync_grp_id, _ = await db.create_group("گروه تست خرید", 8888)
+
+        # درج اقلام لیست خرید
+        item_id1 = await db.add_shopping_item(sync_grp_id, 8888, "پنیر خامه‌ای", 45000, 2)
+        item_id2 = await db.add_shopping_item(sync_grp_id, 8888, "نان بربری", 10000, 3)
+        await db.mark_shopping_items_bought([item_id1], 8888)
+
+        # درج غذای سفارشی
+        food_id1 = await db.add_custom_food(sync_grp_id, 8888, "میرزا قاسمی", "traditional", "🍆", "شمالی اصیل")
+
+        # اجرای پشتیبان‌گیری در کلاد
+        backup_res = await cloud_db_sync.backup_to_cloud()
+        assert backup_res is True, "Backup to cloud should succeed"
+        assert "content" in cloud_storage, "Cloud storage should have content"
+
+        # بررسی و رمزگشایی انولوپ ابری
+        env = json.loads(base64.b64decode(cloud_storage["content"]).decode("utf-8"))
+        fernet = cloud_db_sync._get_fernet()
+        decrypted = json.loads(fernet.decrypt(env["data"].encode("ascii")).decode("utf-8"))
+
+        assert "shopping_items" in decrypted, "Shopping items should be in cloud dump"
+        assert len(decrypted["shopping_items"]) == 2, "Should have 2 shopping items in dump"
+        assert "custom_foods" in decrypted, "Custom foods should be in cloud dump"
+        assert len(decrypted["custom_foods"]) == 1, "Should have 1 custom food in dump"
+
+        # شبیه‌سازی ریستارت کامل سرور با کانتینر جدید و دیتابیس خالی
+        db.DB_PATH = sync_test_db_2
+        cloud_db_sync.DB_PATH = sync_test_db_2
+
+        # با اجرای init_db دیتابیس نو ساخته شده و خودکار restore_from_cloud فراخوانی می‌شود
+        await db.init_db()
+
+        # بررسی اینکه آیا اقلام لیست خرید با تمام فیلدها بازیابی شدند
+        restored_items = await db.get_group_shopping_items(sync_grp_id, include_bought=True)
+        assert len(restored_items) == 2, f"Expected 2 restored shopping items, got {len(restored_items)}"
+
+        # بررسی قلم خریداری شده
+        bought_items = await db.get_bought_shopping_items(sync_grp_id)
+        assert len(bought_items) == 1
+        assert bought_items[0]["item_name"] == "پنیر خامه‌ای"
+        assert bought_items[0]["unit_price"] == 45000
+        assert bought_items[0]["quantity"] == 2
+        assert bought_items[0]["total_price"] == 90000
+        assert bought_items[0]["buyer_id"] == 8888
+
+        # بررسی قلم خریداری نشده
+        unbought_items = await db.get_group_shopping_items(sync_grp_id, include_bought=False)
+        assert len(unbought_items) == 1
+        assert unbought_items[0]["item_name"] == "نان بربری"
+
+        # بررسی غذای سفارشی بازیابی شده
+        restored_foods = await db.get_custom_foods(sync_grp_id)
+        assert len(restored_foods) == 1
+        assert restored_foods[0]["name"] == "میرزا قاسمی"
+        assert restored_foods[0]["category"] == "traditional"
+
+        print("✅ آزمون جامع بکاپ و بازیابی ابری اقلام لیست خرید و غذاهای سفارشی با موفقیت ۱۰۰٪ پاس شد.")
+    finally:
+        cloud_db_sync._github_api_request = orig_req
+        cloud_db_sync.GITHUB_TOKEN = old_gh_token
+        db.DB_PATH = old_db_path
+        cloud_db_sync.DB_PATH = old_sync_db_path
+        for f in [sync_test_db, sync_test_db_2]:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
 
     print("\n" + "=" * 60)
     print("🎉 تمامی تست‌های جامع در تمام سناریوهای مرزی با موفقیت ۱۰۰٪ پاس شدند!")
