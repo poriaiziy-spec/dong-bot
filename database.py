@@ -56,7 +56,8 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN bank_name TEXT;",
             "ALTER TABLE groups ADD COLUMN tone TEXT DEFAULT 'friendly';",
             "ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1;",
-            "ALTER TABLE users ADD COLUMN calling_name TEXT;"
+            "ALTER TABLE users ADD COLUMN calling_name TEXT;",
+            "ALTER TABLE expenses ADD COLUMN is_settlement INTEGER DEFAULT 0;"
         ]:
             try:
                 await db.execute(col_sql)
@@ -72,6 +73,7 @@ async def init_db():
                 title TEXT NOT NULL,
                 amount INTEGER NOT NULL,
                 settled INTEGER DEFAULT 0,
+                is_settlement INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE,
                 FOREIGN KEY (payer_id) REFERENCES users (id) ON DELETE CASCADE
@@ -506,16 +508,17 @@ async def get_group_members(group_id: int) -> list[dict]:
             return members
 
 
-async def add_expense(group_id: int, payer_id: int, title: str, amount: int, shares: dict[int, int]) -> int:
+async def add_expense(group_id: int, payer_id: int, title: str, amount: int, shares: dict[int, int], is_settlement: int = 0) -> int:
     """
     ثبت هزینه جدید و تسهیم آن بین اعضا
     shares: {user_id: share_amount}
+    is_settlement: 1 برای تراکنش‌های تسویه مستقیم بدهی
     """
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("""
-            INSERT INTO expenses (group_id, payer_id, title, amount, settled)
-            VALUES (?, ?, ?, ?, 0)
-        """, (group_id, payer_id, title, amount))
+            INSERT INTO expenses (group_id, payer_id, title, amount, settled, is_settlement)
+            VALUES (?, ?, ?, ?, 0, ?)
+        """, (group_id, payer_id, title, amount, is_settlement))
         expense_id = cursor.lastrowid
 
         for user_id, share_amt in shares.items():
@@ -752,6 +755,51 @@ async def settle_group(group_id: int) -> int:
         await db.commit()
         schedule_cloud_backup()
         return cursor.rowcount
+
+
+async def record_debt_settlement(group_id: int, debtor_id: int, creditor_id: int, amount: int) -> int:
+    """
+    ثبت تسویه حساب واریزی دنگ بین دو عضو:
+    بدهکار (debtor_id) به طلبکار (creditor_id) مبلغ (amount) را پرداخت می‌کند.
+    یک رکورد تسویه با is_settlement=1 ثبت می‌شود تا بدهی بین این دو شخص در محاسبات تراز و فرمول تسویه کاملاً صفر شود.
+    """
+    creditor_name = await get_user_calling_name(creditor_id) or "طلبکار"
+    title = f"تسویه دنگ با {creditor_name}"
+    return await add_expense(
+        group_id=group_id,
+        payer_id=debtor_id,
+        title=title,
+        amount=amount,
+        shares={creditor_id: amount},
+        is_settlement=1
+    )
+
+
+async def settle_member_balance(group_id: int, user_id: int) -> int:
+    """
+    صفر کردن حساب‌های یک فرد به طور جداگانه در یک گروه:
+    تمام بدهی‌ها و طلب‌های فرد در این گروه تسویه و صفر می‌شوند بدون اینکه حساب بقیه اعضا دست بخورد.
+    تعداد تراکنش‌های تسویه ثبت‌شده بازگردانده می‌شود.
+    """
+    from calculator import calculate_group_balances
+    members = await get_group_members(group_id)
+    active_expenses = await get_active_expenses(group_id)
+    balances = calculate_group_balances(members, active_expenses)
+
+    settled_count = 0
+    for s in balances.get("settlements", []):
+        from_id = s.get("from_user_id") or s["from_user"]["id"]
+        to_id = s.get("to_user_id") or s["to_user"]["id"]
+        amt = s["amount"]
+
+        if from_id == user_id:
+            await record_debt_settlement(group_id, from_id, to_id, amt)
+            settled_count += 1
+        elif to_id == user_id:
+            await record_debt_settlement(group_id, from_id, to_id, amt)
+            settled_count += 1
+
+    return settled_count
 
 
 async def ensure_user_exists(user_id: int, full_name: str = "کاربر", username: str | None = None):

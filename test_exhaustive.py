@@ -220,6 +220,8 @@ async def test_all_scenarios():
     async def mock_coro(*args, **kwargs): return True
     cloud_db_sync.backup_to_cloud = mock_coro
     cloud_db_sync.restore_from_cloud = mock_coro
+    db.backup_to_cloud = mock_coro
+    db.restore_from_cloud = mock_coro
 
     test_db_file = "test_exhaustive.db"
     if os.path.exists(test_db_file):
@@ -505,8 +507,14 @@ async def test_all_scenarios():
             InlineKeyboardButton(text="رد", callback_data=f"grp:zero_rej:{BIG_GRP}:{BIG_USER}")
         ]]),
         InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="تایید واریز", callback_data=f"pay:ack:{BIG_USER}:{BIG_USER}:{BIG_AMT}"),
-            InlineKeyboardButton(text="عدم واریز", callback_data=f"pay:nack:{BIG_USER}:{BIG_USER}")
+            InlineKeyboardButton(text="تایید واریز", callback_data=f"pay:ack:{BIG_GRP}:{BIG_USER}:{BIG_USER}:{BIG_AMT}"),
+            InlineKeyboardButton(text="عدم واریز", callback_data=f"pay:nack:{BIG_GRP}:{BIG_USER}:{BIG_USER}"),
+            InlineKeyboardButton(text="تسویه مستقیم", callback_data=f"pay:dir:{BIG_GRP}:{BIG_USER}:{BIG_USER}:{BIG_AMT}")
+        ]]),
+        InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="منوی صفر فرد", callback_data=f"grp:zero_mem_menu:{BIG_GRP}"),
+            InlineKeyboardButton(text="پرسش صفر فرد", callback_data=f"grp:zero_mem_ask:{BIG_GRP}:{BIG_USER}"),
+            InlineKeyboardButton(text="اجرای صفر فرد", callback_data=f"grp:zero_mem_do:{BIG_GRP}:{BIG_USER}")
         ]]),
         InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="اطلاع‌رسانی خرید", callback_data=f"shop:bnotif:{BIG_EXP}:{BIG_GRP}"),
@@ -733,8 +741,43 @@ async def test_all_scenarios():
         })
         assert food_del.status == 200
         assert (await food_del.json())["success"] is True
+
+        # ۸. آزمون تسویه مستقیم یک بدهی از مینی‌اپ
+        settle_res = await client.post("/api/app/settle_debt", json={
+            "group_id": t_grp_id,
+            "debtor_id": user_id,
+            "creditor_id": u2_id,
+            "amount": 25000
+        })
+        assert settle_res.status == 200
+        assert (await settle_res.json())["success"] is True
+
+        # ۹. آزمون صفر کردن حساب جداگانه یک فرد مشخص در گروه
+        settle_mem_res = await client.post("/api/app/settle_member", json={
+            "group_id": t_grp_id,
+            "user_id": user_id
+        })
+        assert settle_mem_res.status == 200
+        assert (await settle_mem_res.json())["success"] is True
+
+        # ۱۰. آزمون ارسال اعلام واریزی به طلبکار با دکمه‌های تایید
+        notify_pay_res = await client.post("/api/app/notify_payment", json={
+            "group_id": t_grp_id,
+            "debtor_id": user_id,
+            "creditor_id": u2_id,
+            "amount": 30000
+        })
+        assert notify_pay_res.status == 200
+        assert (await notify_pay_res.json())["success"] is True
+
+        # ۱۱. آزمون صفر کردن کلی گروه از مینی‌اپ
+        settle_grp_res = await client.post("/api/app/settle_group", json={
+            "group_id": t_grp_id
+        })
+        assert settle_grp_res.status == 200
+        assert (await settle_grp_res.json())["success"] is True
         
-        print("✅ تمامی روت‌ها و متدهای API مینی‌اپ (شامل ثبت غذای دلخواه) با موفقیت ۱۰۰٪ پاس شدند.")
+        print("✅ تمامی روت‌ها و متدهای API مینی‌اپ (شامل تسویه بدهی و صفر کردن حساب فرد) با موفقیت ۱۰۰٪ پاس شدند.")
     finally:
         await client.close()
 

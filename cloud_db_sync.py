@@ -243,9 +243,9 @@ async def restore_from_cloud():
 
             for e in dump.get("expenses", []):
                 await db.execute("""
-                    INSERT OR REPLACE INTO expenses (id, group_id, payer_id, title, amount, settled, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (e["id"], e["group_id"], e["payer_id"], e["title"], e["amount"], e.get("settled", 0), e.get("created_at")))
+                    INSERT OR REPLACE INTO expenses (id, group_id, payer_id, title, amount, settled, is_settlement, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (e["id"], e["group_id"], e["payer_id"], e["title"], e["amount"], e.get("settled", 0), e.get("is_settlement", 0), e.get("created_at")))
 
             for es in dump.get("expense_shares", []):
                 await db.execute("""

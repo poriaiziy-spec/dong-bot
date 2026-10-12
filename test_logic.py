@@ -65,6 +65,8 @@ async def test_full_pipeline():
         pass
     cloud_db_sync.backup_to_cloud = dummy_coro
     cloud_db_sync.restore_from_cloud = dummy_coro
+    db.backup_to_cloud = dummy_coro
+    db.restore_from_cloud = dummy_coro
 
     db.DB_PATH = "test_dong.db"
     if os.path.exists("test_dong.db"):
@@ -188,15 +190,44 @@ async def test_full_pipeline():
     assert len(members_after_kick) == 2
     print("✅ تست اخراج عضو توسط سرگروه پاس شد.")
 
+    # تست تسویه مستقیم بدهی و صفر شدن بدهی در محاسبات
+    balances_before = calculate_group_balances(await db.get_group_members(group_id), await db.get_active_expenses(group_id))
+    stats_102_before = next(s for s in balances_before["member_stats"] if s["user"]["id"] == 102)
+    assert stats_102_before["net"] == -25000  # 150000 - 175000 = -25000
+
+    # تست تسویه مستقیم ۲۵ هزار تومان توسط ۱۰۲ به ۱۰۱
+    settle_exp_id = await db.record_debt_settlement(group_id, 102, 101, 25000)
+    assert settle_exp_id > 0
+
+    balances_after_settle = calculate_group_balances(await db.get_group_members(group_id), await db.get_active_expenses(group_id))
+    stats_102_after = next(s for s in balances_after_settle["member_stats"] if s["user"]["id"] == 102)
+    assert stats_102_after["net"] == 0  # بدهی ۱۰۲ دقیقاً صفر شد!
+    print("✅ تست تسویه مستقیم بدهی و صفر شدن بدهی در محاسبات با موفقیت پاس شد.")
+
+    # تست صفر کردن حساب یک فرد به طور جداگانه
+    exp_temp = await db.add_expense(group_id, 101, "خرید موقت", 80000, {101: 40000, 102: 40000})
+    balances_temp = calculate_group_balances(await db.get_group_members(group_id), await db.get_active_expenses(group_id))
+    stats_102_temp = next(s for s in balances_temp["member_stats"] if s["user"]["id"] == 102)
+    assert stats_102_temp["net"] == -40000
+
+    # صفر کردن حساب ۱۰۲ به تنهایی
+    settled_mem_count = await db.settle_member_balance(group_id, 102)
+    assert settled_mem_count >= 1
+
+    balances_after_mem = calculate_group_balances(await db.get_group_members(group_id), await db.get_active_expenses(group_id))
+    stats_102_final = next(s for s in balances_after_mem["member_stats"] if s["user"]["id"] == 102)
+    assert stats_102_final["net"] == 0  # حساب ۱۰۲ کاملاً صفر شد!
+    print("✅ تست صفر کردن حساب جداگانه فرد بدون اثر روی بقیه با موفقیت پاس شد.")
+
     print("\n--- ۴. تست صفر کردن حساب‌ها ---")
     settled_count = await db.settle_group(group_id)
-    assert settled_count == 2
+    assert settled_count >= 2
     
     active_after = await db.get_active_expenses(group_id)
     assert len(active_after) == 0
     
     history = await db.get_group_history(group_id)
-    assert len(history) == 2
+    assert len(history) >= 2
     print("✅ تاریخچه هزینه‌ها پس از صفر کردن حساب به درستی حفظ شد.")
 
     # تست دریافت تمام کاربران

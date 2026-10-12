@@ -141,12 +141,18 @@ async def handle_settlement_calculation(callback: CallbackQuery):
                     callback_data=f"pay:notify:{group_id}:{debtor['id']}:{creditor['id']}:{item['amount']}"
                 ),
                 InlineKeyboardButton(
+                    text="✅ تسویه این بدهی",
+                    callback_data=f"pay:dir:{group_id}:{debtor['id']}:{creditor['id']}:{item['amount']}"
+                )
+            ])
+            markup_buttons.append([
+                InlineKeyboardButton(
                     text=f"🔔 یادآوری به {d_label}",
                     callback_data=f"pay:remind:{group_id}:{debtor['id']}:{creditor['id']}:{item['amount']}"
                 )
             ])
             
-        lines.append("✅ <i>هر وقت واریزی‌ها انجام شد، دکمه «صفر کردن حساب‌ها» رو بزن تا دوره رو با عشق ببندیم جان دلم.</i>")
+        lines.append("✅ <i>هر واریزی که انجام شد، با تایید طلبکار یا با دکمه‌های زیر می‌توانید حساب هر فرد را جداگانه یا کل گروه را یکجا صفر کنید.</i>")
         text = "\n".join(lines)
         
     markup_buttons.append([
@@ -156,7 +162,10 @@ async def handle_settlement_calculation(callback: CallbackQuery):
         InlineKeyboardButton(text="📊 مشاهده گزارش تفکیکی", callback_data=f"grp:report:{group_id}")
     ])
     markup_buttons.append([
-        InlineKeyboardButton(text="🔄 صفر کردن حساب‌ها", callback_data=f"grp:zero_confirm:{group_id}"),
+        InlineKeyboardButton(text="👤 صفر کردن حساب یک فرد", callback_data=f"grp:zero_mem_menu:{group_id}"),
+        InlineKeyboardButton(text="🔄 صفر کردن کلی گروه", callback_data=f"grp:zero_confirm:{group_id}")
+    ])
+    markup_buttons.append([
         InlineKeyboardButton(text="🔙 بازگشت به بخش تسویه", callback_data=f"grp:sec_settle:{group_id}")
     ])
     
@@ -280,8 +289,8 @@ async def handle_payment_notification(callback: CallbackQuery):
     
     confirm_markup = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="✅ تایید دریافت وجه", callback_data=f"pay:ack:{debtor_id}:{creditor_id}:{amount}"),
-            InlineKeyboardButton(text="❌ هنوز نیامده", callback_data=f"pay:nack:{debtor_id}:{creditor_id}")
+            InlineKeyboardButton(text="✅ تایید دریافت وجه", callback_data=f"pay:ack:{group_id}:{debtor_id}:{creditor_id}:{amount}"),
+            InlineKeyboardButton(text="❌ هنوز نیامده", callback_data=f"pay:nack:{group_id}:{debtor_id}:{creditor_id}")
         ]
     ])
     
@@ -292,22 +301,47 @@ async def handle_payment_notification(callback: CallbackQuery):
         await callback.answer("⚠️ خطا در ارسال پیام به طلبکار (باید ربات را استارت کرده باشد).", show_alert=True)
 
 
+async def _find_group_for_debt(debtor_id: int, creditor_id: int) -> int | None:
+    """یافتن گروه مشترکی که این دو عضو در آن حضور دارند"""
+    user_groups = await db.get_user_groups(debtor_id)
+    for g in user_groups:
+        gid = g["id"]
+        members = await db.get_group_members(gid)
+        if any(m["id"] == creditor_id for m in members):
+            return gid
+    return None
+
+
 @router.callback_query(F.data.startswith("pay:ack:"))
 async def handle_ack_payment(callback: CallbackQuery):
     parts = callback.data.split(":")
-    debtor_id = int(parts[2])
-    creditor_id = int(parts[3])
-    amount = int(parts[4])
-    
-    await callback.answer("✅ دریافت وجه تایید شد، دستت طلا عزیز دلم!")
+    if len(parts) >= 6:
+        group_id = int(parts[2])
+        debtor_id = int(parts[3])
+        creditor_id = int(parts[4])
+        amount = int(parts[5])
+    else:
+        debtor_id = int(parts[2])
+        creditor_id = int(parts[3])
+        amount = int(parts[4])
+        group_id = await _find_group_for_debt(debtor_id, creditor_id)
+
+    # صفر کردن رسمی بدهی در دیتابیس
+    if group_id:
+        await db.record_debt_settlement(group_id, debtor_id, creditor_id, amount)
+
+    await callback.answer("✅ دریافت وجه تایید و این بدهی در سیستم کاملاً صفر شد!", show_alert=True)
     base_text = safe(callback.message.text or "")
-    await callback.message.edit_text(base_text + "\n\n🟢 <b>وضعیت: توسط طلبکار تایید شد.</b>", parse_mode="HTML")
+    await callback.message.edit_text(
+        base_text + f"\n\n🟢 <b>وضعیت: توسط طلبکار تایید شد و مبلغ {format_amount(amount)} با موفقیت تسویه و در حساب‌های گروه صفر گردید.</b>",
+        parse_mode="HTML"
+    )
     
     try:
         debtor_calling = await db.get_user_calling_name(debtor_id) or "عزیز دلم"
         await callback.bot.send_message(
             debtor_id,
-            f"🎉 <b>واریزی شما تایید شد {safe(debtor_calling)} قشنگم!</b>\nطلبکار دریافت مبلغ <b>{format_amount(amount)}</b> رو تایید کرد. دستت طلا و دمت گرم! ☕❤️",
+            f"🎉 <b>واریزی شما تایید شد {safe(debtor_calling)} قشنگم!</b>\nطلبکار دریافت مبلغ <b>{format_amount(amount)}</b> رو تایید کرد و این بدهی در گروه کاملاً <b>صفر و تسویه</b> شد. دستت طلا و دمت گرم! ☕❤️",
             parse_mode="HTML"
         )
     except Exception:
@@ -316,7 +350,8 @@ async def handle_ack_payment(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("pay:nack:"))
 async def handle_nack_payment(callback: CallbackQuery):
-    debtor_id = int(callback.data.split(":")[2])
+    parts = callback.data.split(":")
+    debtor_id = int(parts[3]) if len(parts) >= 5 else int(parts[2])
     await callback.answer("پیام عدم دریافت ثبت شد.")
     base_text = safe(callback.message.text or "")
     await callback.message.edit_text(base_text + "\n\n🔴 <b>وضعیت: طلبکار اعلام کرد پولی دریافت نشده است!</b>", parse_mode="HTML")
@@ -330,6 +365,128 @@ async def handle_nack_payment(callback: CallbackQuery):
         )
     except Exception:
         pass
+
+
+@router.callback_query(F.data.startswith("pay:dir:"))
+async def handle_direct_settle_debt(callback: CallbackQuery):
+    """تسویه مستقیم و بدون معطلی یک بدهی توسط طلبکار یا سرگروه"""
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    debtor_id = int(parts[3])
+    creditor_id = int(parts[4])
+    amount = int(parts[5])
+
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    # فقط طلبکار یا سرگروه مجاز به تایید تسویه این بدهی هستند
+    if callback.from_user.id != creditor_id and callback.from_user.id != group["created_by"]:
+        await callback.answer("⚠️ فقط طلبکار یا سرگروه می‌توانند تسویه این بدهی را ثبت کنند.", show_alert=True)
+        return
+
+    await db.record_debt_settlement(group_id, debtor_id, creditor_id, amount)
+    await callback.answer("✅ این بدهی با موفقیت تسویه و در حساب‌ها صفر شد!", show_alert=True)
+    await handle_group_balances(callback)
+
+
+@router.callback_query(F.data.startswith("grp:zero_mem_menu:"))
+async def handle_zero_member_menu(callback: CallbackQuery):
+    """منوی انتخاب عضو جهت صفر کردن حساب جداگانه"""
+    group_id = int(callback.data.split(":")[2])
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    members = await db.get_group_members(group_id)
+    active_expenses = await db.get_active_expenses(group_id)
+    calc_res = calculate_group_balances(members, active_expenses)
+    stats = calc_res["member_stats"]
+
+    # فیلتر اعضایی که تراز غیر صفر دارند (بدهکار یا طلبکار)
+    active_members = [s for s in stats if abs(s["net"]) > 0.5]
+    if not active_members:
+        await callback.answer("✨ تمام حساب‌ها در این گروه در حال حاضر صاف و صفر هستند!", show_alert=True)
+        return
+
+    await callback.answer()
+    lines = [
+        f"👤 <b>صفر کردن حساب جداگانه افراد در «{safe(group['title'])}»:</b>\n",
+        "عزیز دلم، فردی که می‌خواهی حساب و دنگ‌هایش در این دوره کاملاً صاف و صفر شود را انتخاب کن:"
+    ]
+    buttons = []
+    for s in active_members:
+        u = s["user"]
+        u_name = u.get("display_name") or u.get("nickname") or u.get("calling_name") or u.get("full_name") or "عضو"
+        net = s["net"]
+        if net < 0:
+            status_text = f"🔴 {u_name} (بدهکار: {format_amount(abs(net))})"
+        else:
+            status_text = f"🟢 {u_name} (طلبکار: {format_amount(net)})"
+        buttons.append([InlineKeyboardButton(text=status_text, callback_data=f"grp:zero_mem_ask:{group_id}:{u['id']}")])
+
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به تسویه", callback_data=f"grp:sec_settle:{group_id}")])
+    await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+
+
+@router.callback_query(F.data.startswith("grp:zero_mem_ask:"))
+async def handle_zero_member_ask(callback: CallbackQuery):
+    """تاییدیه صفر کردن حساب یک فرد مشخص"""
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    target_id = int(parts[3])
+
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    target_name = await db.get_user_calling_name(target_id) or "این عضو"
+    text = (
+        f"⚠️ <b>تایید صفر کردن حساب جداگانه «{safe(target_name)}»:</b>\n\n"
+        f"آیا مطمئن هستید که می‌خواهید تمام حساب‌ها، بدهی‌ها و طلب‌های <b>{safe(target_name)}</b> در دورهمی «{safe(group['title'])}» صفر و تسویه شوند؟\n\n"
+        f"💡 <i>با این کار، حساب بقیه افراد بدون تغییر باقی مانده و فقط حساب {safe(target_name)} تسویه خواهد شد.</i>"
+    )
+    buttons = [
+        [
+            InlineKeyboardButton(text="✅ بله، حسابش صفر شود", callback_data=f"grp:zero_mem_do:{group_id}:{target_id}"),
+            InlineKeyboardButton(text="❌ انصراف", callback_data=f"grp:zero_mem_menu:{group_id}")
+        ]
+    ]
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+
+
+@router.callback_query(F.data.startswith("grp:zero_mem_do:"))
+async def handle_zero_member_do(callback: CallbackQuery):
+    """اجرای صفر کردن حساب فرد مشخص"""
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    target_id = int(parts[3])
+
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    if callback.from_user.id != group["created_by"] and callback.from_user.id != target_id:
+        await callback.answer("⚠️ فقط سرگروه یا خود عضو مجاز به تایید صفر کردن حساب هستند.", show_alert=True)
+        return
+
+    count = await db.settle_member_balance(group_id, target_id)
+    target_name = await db.get_user_calling_name(target_id) or "این عضو"
+    await callback.answer("✅ حساب با موفقیت صفر و تسویه شد!", show_alert=True)
+
+    text = (
+        f"🎉 <b>حساب «{safe(target_name)}» با موفقیت صفر شد!</b> ☕❤️\n\n"
+        f"تمام بدهی‌ها و دنگ‌های مربوط به {safe(target_name)} در دورهمی «{safe(group['title'])}» تسویه شد و تراز ایشان صفر گردید."
+    )
+    buttons = [
+        [InlineKeyboardButton(text="📊 مشاهده تراز و تسویه گروه", callback_data=f"grp:sec_settle:{group_id}")],
+        [InlineKeyboardButton(text="🔙 بازگشت به گروه", callback_data=f"grp:view:{group_id}")]
+    ]
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
 
 @router.callback_query(F.data.startswith("grp:zero_confirm:"))

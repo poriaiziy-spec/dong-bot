@@ -9,7 +9,7 @@ def calculate_group_balances(members: list[dict], expenses: list[dict]) -> dict[
     - member_stats: وضعیت هر عضو (پرداختی، سهم، طلبکاری/بدهکاری)
     - settlements: لیست تراکنش‌های بهینه جهت تسویه حساب کامل (کی به کی چقدر بدهد)
     """
-    total_spent = sum(exp["amount"] for exp in expenses)
+    total_spent = sum(exp["amount"] for exp in expenses if not exp.get("is_settlement"))
     
     # نگاشت شناسه کاربر به اطلاعات کاربر
     users_by_id = {m["id"]: m for m in members}
@@ -88,6 +88,8 @@ def calculate_group_balances(members: list[dict], expenses: list[dict]) -> dict[
             settlements.append({
                 "from_user": d_u,
                 "to_user": c_u,
+                "from_user_id": d_u["id"],
+                "to_user_id": c_u["id"],
                 "from_name": f_name,
                 "to_name": t_name,
                 "amount": int(round(transfer_amount))

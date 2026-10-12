@@ -8,7 +8,7 @@ from config import DB_PATH, WEB_APP_URL, BOT_TOKEN
 from calculator import calculate_group_balances
 from motivational import CAFE_MOTIVATIONAL_QUOTES
 from bank_utils import format_card_number, detect_bank_name, clean_card_input
-from helpers import format_amount, parse_bulk_shopping_text
+from helpers import format_amount, parse_bulk_shopping_text, safe
 
 logger = logging.getLogger(__name__)
 
@@ -1452,6 +1452,30 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- مودال اختصاصی ۵: صفر کردن حساب جداگانه افراد -->
+    <div class="modal-overlay" id="settleMemberModal" onclick="closeModalOnBg(event, 'settleMemberModal')">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>👤</span>
+                    <span>صفر کردن حساب یک فرد</span>
+                </div>
+                <button class="modal-close-btn" onclick="closeSettleMemberModal()">✕</button>
+            </div>
+            
+            <p style="font-size:0.82rem; color:var(--text-sub); margin-bottom:14px; line-height:1.6;">
+                فردی که می‌خواهی حساب و دنگ‌هایش در این دوره صاف و صفر شود را انتخاب کن:
+            </p>
+
+            <div id="settleMembersList" style="max-height:260px; overflow-y:auto; margin-bottom:16px; display:flex; flex-direction:column; gap:8px;">
+            </div>
+
+            <button class="del-btn" style="width:100%; border-radius:var(--radius-md); font-weight:700; background:rgba(255,255,255,0.06); border-color:var(--border-glass); color:var(--text-sub);" onclick="closeSettleMemberModal()">
+                انصراف
+            </button>
+        </div>
+    </div>
+
     <script>
         // اتصال به تلگرام وب‌اپ
         const tg = window.Telegram?.WebApp;
@@ -1689,8 +1713,18 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
 
                     <!-- بخش تسویه حساب بدهی‌ها -->
                     <div style="margin-top:18px;">
-                        <div style="font-size:0.94rem; font-weight:800; margin-bottom:12px; color:var(--gold-primary);">
-                            ⚖️ فرمول تسویه حساب بدهی‌ها:
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                            <div style="font-size:0.94rem; font-weight:800; color:var(--gold-primary);">
+                                ⚖️ فرمول تسویه حساب بدهی‌ها:
+                            </div>
+                            <div style="display:flex; gap:6px;">
+                                <button class="copy-btn" style="background:rgba(217,160,82,0.15); color:var(--gold-primary); border-color:var(--gold-primary); padding:4px 8px; font-size:0.75rem;" onclick="openSettleMemberModal(${currentGroup.id})">
+                                    👤 صفر کردن حساب یک فرد
+                                </button>
+                                <button class="copy-btn" style="background:rgba(239,68,68,0.12); color:var(--rose-main); border-color:var(--rose-main); padding:4px 8px; font-size:0.75rem;" onclick="confirmSettleGroup(${currentGroup.id})">
+                                    🔄 صفر کردن کلی
+                                </button>
+                            </div>
                         </div>
             `;
 
@@ -1703,6 +1737,10 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                     const toName = s.to_name || toUser.display_name || toUser.nickname || toUser.calling_name || toUser.full_name || 'عضو';
                     const toUserCard = s.to_card;
                     const toUserCardFormatted = s.to_card_formatted || (toUserCard ? toUserCard.replace(/(\d{4})/g, '$1 ').trim() : '');
+                    const cleanFromName = fromName.replace(/'/g, "\\'");
+                    const cleanToName = toName.replace(/'/g, "\\'");
+                    const fromId = fromUser.id || s.from_user_id;
+                    const toId = toUser.id || s.to_user_id;
                     
                     groupHtml += `
                         <div class="item-row" style="flex-direction:column; align-items:stretch; gap:12px; padding:16px; margin-bottom:12px;">
@@ -1727,6 +1765,14 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                                     (شماره کارت طلبکار هنوز ثبت نشده است)
                                 </div>
                             `}
+                            <div style="display:flex; gap:8px; margin-top:6px;">
+                                <button class="btn-primary" style="flex:1; padding:7px 10px; font-size:0.8rem; background:linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow:0 3px 10px rgba(16,185,129,0.25);" onclick="settleDebtDirect(${currentGroup.id}, ${fromId}, ${toId}, ${s.amount}, '${cleanFromName}', '${cleanToName}')">
+                                    ✅ تایید و تسویه بدهی
+                                </button>
+                                <button class="btn-secondary" style="flex:1; padding:7px 10px; font-size:0.8rem; border:1px solid var(--border-glass); background:rgba(255,255,255,0.04); color:var(--text-main);" onclick="notifyPaymentDirect(${currentGroup.id}, ${fromId}, ${toId}, ${s.amount}, '${cleanFromName}', '${cleanToName}')">
+                                    💸 اعلام واریز به طلبکار
+                                </button>
+                            </div>
                         </div>
                     `;
                 });
@@ -1750,18 +1796,33 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             if (expenses.length > 0) {
                 expenses.forEach(e => {
                     const sharesCount = (e.shares && e.shares.length) ? `${e.shares.length} نفر سهیم` : 'سهیم بین اعضا';
-                    groupHtml += `
-                        <div class="item-row" style="cursor:pointer;" onclick="openEditExpenseModal(${e.id}, ${currentGroup.id})">
-                            <div style="display:flex; flex-direction:column; gap:2px;">
-                                <div style="font-size:0.94rem; font-weight:800;">${e.title}</div>
-                                <div style="font-size:0.78rem; color:var(--text-sub);">پرداخت‌کننده: <strong>${e.payer_name}</strong> • ${sharesCount}</div>
+                    if (e.is_settlement) {
+                        groupHtml += `
+                            <div class="item-row" style="background:rgba(16,185,129,0.06); border-color:rgba(16,185,129,0.25);">
+                                <div style="display:flex; flex-direction:column; gap:2px;">
+                                    <div style="font-size:0.94rem; font-weight:800; color:var(--emerald-main);">🟢 ${e.title}</div>
+                                    <div style="font-size:0.78rem; color:var(--text-sub);">واریزکننده: <strong>${e.payer_name}</strong> • تسویه حساب بدهی</div>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <div class="item-price" style="color:var(--emerald-main);">${formatToman(e.amount)}</div>
+                                    <span style="font-size:0.72rem; background:rgba(16,185,129,0.15); color:var(--emerald-main); padding:2px 8px; border-radius:10px; font-weight:700;">تسویه شده</span>
+                                </div>
                             </div>
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <div class="item-price">${formatToman(e.amount)}</div>
-                                <button class="del-btn" onclick="event.stopPropagation(); openEditExpenseModal(${e.id}, ${currentGroup.id})" style="color:var(--gold-primary); border-color:var(--gold-primary); background:rgba(217,160,82,0.1); width:28px; height:28px; font-size:0.8rem;" title="ویرایش هزینه">✏️</button>
+                        `;
+                    } else {
+                        groupHtml += `
+                            <div class="item-row" style="cursor:pointer;" onclick="openEditExpenseModal(${e.id}, ${currentGroup.id})">
+                                <div style="display:flex; flex-direction:column; gap:2px;">
+                                    <div style="font-size:0.94rem; font-weight:800;">${e.title}</div>
+                                    <div style="font-size:0.78rem; color:var(--text-sub);">پرداخت‌کننده: <strong>${e.payer_name}</strong> • ${sharesCount}</div>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <div class="item-price">${formatToman(e.amount)}</div>
+                                    <button class="del-btn" onclick="event.stopPropagation(); openEditExpenseModal(${e.id}, ${currentGroup.id})" style="color:var(--gold-primary); border-color:var(--gold-primary); background:rgba(217,160,82,0.1); width:28px; height:28px; font-size:0.8rem;" title="ویرایش هزینه">✏️</button>
+                                </div>
                             </div>
-                        </div>
-                    `;
+                        `;
+                    }
                 });
             } else {
                 groupHtml += `
@@ -2324,6 +2385,160 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 }
             } catch (e) {
                 showToast('خطا در حذف قلم');
+            }
+        }
+
+        // تسویه مستقیم یک بدهی بین دو فرد
+        async function settleDebtDirect(groupId, fromId, toId, amount, fromName, toName) {
+            if (!confirm(`آیا مطمئن هستید که بدهی «${fromName}» به «${toName}» به مبلغ ${formatToman(amount)} تسویه و صفر شود؟`)) {
+                return;
+            }
+            try {
+                const res = await fetch('/api/app/settle_debt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        group_id: groupId,
+                        debtor_id: fromId,
+                        creditor_id: toId,
+                        amount: amount
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    triggerConfetti();
+                    showToast(`✅ بدهی ${fromName} به ${toName} با موفقیت تسویه و صفر شد!`);
+                    await loadData();
+                    renderGroupDetails();
+                } else {
+                    showToast(data.error || 'خطا در ثبت تسویه بدهی');
+                }
+            } catch (err) {
+                showToast('خطای شبکه در تسویه بدهی');
+            }
+        }
+
+        // ارسال پیام اعلام واریزی به طلبکار در تلگرام
+        async function notifyPaymentDirect(groupId, fromId, toId, amount, fromName, toName) {
+            try {
+                showToast('در حال ارسال پیام اعلام واریزی به طلبکار...');
+                const res = await fetch('/api/app/notify_payment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        group_id: groupId,
+                        debtor_id: fromId,
+                        creditor_id: toId,
+                        amount: amount
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`📨 پیام اعلام واریزی با دکمه تایید برای «${toName}» در تلگرام ارسال شد!`);
+                } else {
+                    showToast(data.error || 'خطا در ارسال پیام');
+                }
+            } catch (err) {
+                showToast('خطای شبکه در ارسال پیام');
+            }
+        }
+
+        // باز کردن مودال صفر کردن حساب یک فرد
+        function openSettleMemberModal(groupId) {
+            const currentGroup = appState.userData?.groups?.find(g => g.id === groupId);
+            if (!currentGroup) return;
+
+            const memberStats = currentGroup.balances?.member_stats || [];
+            const activeStats = memberStats.filter(s => Math.abs(s.net) > 0.5);
+
+            const listEl = document.getElementById('settleMembersList');
+            if (activeStats.length === 0) {
+                listEl.innerHTML = `
+                    <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:14px; text-align:center; color:var(--emerald-main); font-size:0.88rem; font-weight:700;">
+                        ✨ تمام حساب‌ها در این گروه در حال حاضر صاف و صفر هستند!
+                    </div>
+                `;
+            } else {
+                listEl.innerHTML = activeStats.map(s => {
+                    const u = s.user || {};
+                    const name = u.display_name || u.nickname || u.calling_name || u.full_name || 'عضو';
+                    const isDebtor = s.net < 0;
+                    const badgeColor = isDebtor ? 'var(--rose-main)' : 'var(--emerald-main)';
+                    const badgeText = isDebtor ? `بدهکار: ${formatToman(Math.abs(s.net))}` : `طلبکار: ${formatToman(s.net)}`;
+                    const cleanName = name.replace(/'/g, "\\'");
+                    return `
+                        <div class="item-row" style="align-items:center; justify-content:space-between; padding:12px 14px;">
+                            <div>
+                                <div style="font-size:0.92rem; font-weight:800; color:var(--text-main);">${name}</div>
+                                <div style="font-size:0.78rem; color:${badgeColor}; font-weight:700; margin-top:2px;">${badgeText}</div>
+                            </div>
+                            <button class="btn-primary" style="padding:6px 12px; font-size:0.78rem; background:linear-gradient(135deg, #10b981 0%, #059669 100%);" onclick="settleMemberDirect(${groupId}, ${u.id}, '${cleanName}')">
+                                0️⃣ صفر کردن
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            document.getElementById('settleMemberModal').classList.add('active');
+            if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function closeSettleMemberModal() {
+            document.getElementById('settleMemberModal').classList.remove('active');
+        }
+
+        // تسویه و صفر کردن حساب یک فرد مشخص
+        async function settleMemberDirect(groupId, memberId, memberName) {
+            if (!confirm(`آیا مطمئن هستید که می‌خواهید تمام حساب‌ها و دنگ‌های «${memberName}» در این دورهمی صفر شود؟`)) {
+                return;
+            }
+            try {
+                const res = await fetch('/api/app/settle_member', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        group_id: groupId,
+                        user_id: memberId
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    closeSettleMemberModal();
+                    triggerConfetti();
+                    showToast(`🎉 حساب «${memberName}» با موفقیت صفر و تسویه شد!`);
+                    await loadData();
+                    renderGroupDetails();
+                } else {
+                    showToast(data.error || 'خطا در صفر کردن حساب فرد');
+                }
+            } catch (err) {
+                showToast('خطای شبکه در صفر کردن حساب فرد');
+            }
+        }
+
+        // صفر کردن کلی گروه با تایید
+        async function confirmSettleGroup(groupId) {
+            if (!confirm('آیا از صفر کردن کلی تمام حساب‌های این دوره مطمئن هستید؟ تمام هزینه‌های جاری بسته خواهند شد.')) {
+                return;
+            }
+            try {
+                const res = await fetch('/api/app/settle_group', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ group_id: groupId })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    triggerConfetti();
+                    showToast('🎉 تمام حساب‌های گروه با موفقیت صفر شدند!');
+                    await loadData();
+                    renderGroupDetails();
+                } else {
+                    showToast(data.error || 'خطا در صفر کردن گروه');
+                }
+            } catch (err) {
+                showToast('خطای شبکه در صفر کردن گروه');
             }
         }
 
@@ -3266,6 +3481,103 @@ async def api_delete_expense_handler(request: web.Request) -> web.Response:
         return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
 
 
+async def api_settle_debt_handler(request: web.Request) -> web.Response:
+    """تسویه مستقیم یک بدهی مشخص از طریق مینی‌اپ"""
+    try:
+        body = await request.json()
+        group_id = int(body["group_id"])
+        debtor_id = int(body["debtor_id"])
+        creditor_id = int(body["creditor_id"])
+        amount = int(body["amount"])
+
+        exp_id = await db.record_debt_settlement(group_id, debtor_id, creditor_id, amount)
+        return web.json_response({"success": True, "expense_id": exp_id}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"api_settle_debt_handler error: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
+async def api_settle_member_handler(request: web.Request) -> web.Response:
+    """صفر کردن حساب یک فرد مشخص در گروه از طریق مینی‌اپ"""
+    try:
+        body = await request.json()
+        group_id = int(body["group_id"])
+        user_id = int(body["user_id"])
+
+        count = await db.settle_member_balance(group_id, user_id)
+        return web.json_response({"success": True, "count": count}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"api_settle_member_handler error: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
+async def api_settle_group_handler(request: web.Request) -> web.Response:
+    """صفر کردن کلی تمام حساب‌های گروه از طریق مینی‌اپ"""
+    try:
+        body = await request.json()
+        group_id = int(body["group_id"])
+
+        count = await db.settle_group(group_id)
+        return web.json_response({"success": True, "count": count}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"api_settle_group_handler error: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
+async def api_notify_payment_handler(request: web.Request) -> web.Response:
+    """ارسال پیام اعلام واریزی به طلبکار در تلگرام با دکمه تایید دریافت وجه"""
+    try:
+        body = await request.json()
+        group_id = int(body["group_id"])
+        debtor_id = int(body["debtor_id"])
+        creditor_id = int(body["creditor_id"])
+        amount = int(body["amount"])
+
+        group = await db.get_group_by_id(group_id)
+        group_title = group["title"] if group else "دورهمی"
+        group_tone = await db.get_group_tone(group_id) if group else "friendly"
+
+        creditor_calling = await db.get_user_calling_name(creditor_id) or "عزیز دلم"
+        debtor_calling = await db.get_user_calling_name(debtor_id) or "هم‌گروهی"
+
+        from tones import render_payment_notice
+        notice_text = render_payment_notice(
+            tone=group_tone,
+            debtor_name=debtor_calling,
+            creditor_name=creditor_calling,
+            amount=amount
+        )
+        notice_text += f"\n\n👥 <b>دورهمی:</b> {safe(group_title)}"
+
+        sent = False
+        if BOT_TOKEN:
+            import aiohttp
+            telegram_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            confirm_markup = {
+                "inline_keyboard": [
+                    [
+                        {"text": "✅ تایید دریافت وجه", "callback_data": f"pay:ack:{group_id}:{debtor_id}:{creditor_id}:{amount}"},
+                        {"text": "❌ هنوز نیامده", "callback_data": f"pay:nack:{group_id}:{debtor_id}:{creditor_id}"}
+                    ]
+                ]
+            }
+            payload = {
+                "chat_id": creditor_id,
+                "text": notice_text,
+                "parse_mode": "HTML",
+                "reply_markup": confirm_markup
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(telegram_api_url, json=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        sent = True
+
+        return web.json_response({"success": True, "sent": sent}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"api_notify_payment_handler error: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
 def setup_webapp_routes(app: web.Application):
     """ثبت تمام مسیرهای مربوط به مینی‌اپ در اپلیکیشن aiohttp"""
     app.router.add_get("/app", miniapp_page_handler)
@@ -3283,3 +3595,7 @@ def setup_webapp_routes(app: web.Application):
     app.router.add_post("/api/app/add_card", api_add_card_handler)
     app.router.add_post("/api/app/add_food", api_add_food_handler)
     app.router.add_post("/api/app/delete_food", api_delete_food_handler)
+    app.router.add_post("/api/app/settle_debt", api_settle_debt_handler)
+    app.router.add_post("/api/app/settle_member", api_settle_member_handler)
+    app.router.add_post("/api/app/settle_group", api_settle_group_handler)
+    app.router.add_post("/api/app/notify_payment", api_notify_payment_handler)
