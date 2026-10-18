@@ -489,6 +489,7 @@ async def test_all_scenarios():
         kb.shopping_edit_options_keyboard(BIG_EXP, BIG_GRP),
         kb.expense_amount_choice_keyboard(BIG_GRP),
         kb.expense_edit_shares_keyboard(BIG_EXP, BIG_GRP, [{"id": BIG_USER, "full_name": "تست"}], {BIG_USER}),
+        kb.expense_edit_payer_keyboard(BIG_EXP, BIG_GRP, [{"id": BIG_USER, "full_name": "تست"}], BIG_USER),
         kb.shopping_shares_keyboard(BIG_GRP, [{"id": BIG_USER, "full_name": "تست"}], {BIG_USER}),
         kb.miniapp_keyboard(),
         kb.miniapp_keyboard(BIG_GRP)
@@ -522,7 +523,9 @@ async def test_all_scenarios():
         ]]),
         InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="ویرایش متنی لیست", callback_data=f"shop:ed_bulk:{BIG_GRP}"),
-            InlineKeyboardButton(text="ویرایش افراد سهیم", callback_data=f"exp:edit_sh:{BIG_EXP}:{BIG_GRP}")
+            InlineKeyboardButton(text="ویرایش افراد سهیم", callback_data=f"exp:edit_sh:{BIG_EXP}:{BIG_GRP}"),
+            InlineKeyboardButton(text="ویرایش پرداخت‌کننده", callback_data=f"exp:edit_pyr:{BIG_EXP}:{BIG_GRP}"),
+            InlineKeyboardButton(text="تنظیم پرداخت‌کننده", callback_data=f"exp:set_pyr:{BIG_EXP}:{BIG_GRP}:{BIG_USER}")
         ]]),
         quote_dismiss_keyboard()
     ]
@@ -607,15 +610,19 @@ async def test_all_scenarios():
         assert exp_json["expense_id"] > 0
         t_exp_id = exp_json["expense_id"]
 
-        # آزمون ویرایش هزینه و افراد سهیم از طریق مینی‌اپ
+        # آزمون ویرایش هزینه، افراد سهیم و پرداخت‌کننده از طریق مینی‌اپ
         exp_edit_post = await client.post("/api/app/edit_expense", json={
             "expense_id": t_exp_id,
             "group_id": t_grp_id,
             "amount": 240000,
+            "payer_id": u2_id,
             "participant_ids": [user_id]
         })
         assert exp_edit_post.status == 200
         assert (await exp_edit_post.json())["success"] is True
+
+        exp_check = await db.get_expense_by_id(t_exp_id, t_grp_id)
+        assert exp_check["payer_id"] == u2_id
 
         # ۵. آزمون فاکتور و قلم خرید مینی‌اپ
         shop_post = await client.post("/api/app/add_shopping_item", json={

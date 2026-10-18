@@ -406,7 +406,9 @@ async def handle_view_single_expense(callback: CallbackQuery, state: FSMContext 
 
     group = await db.get_group_by_id(group_id)
     is_settled = bool(expense.get("settled"))
-    can_edit = bool(group and (group["created_by"] == callback.from_user.id or expense.get("payer_id") == callback.from_user.id) and not is_settled)
+    members = await db.get_group_members(group_id)
+    is_member = any(m["id"] == callback.from_user.id for m in members)
+    can_edit = bool(group and (group["created_by"] == callback.from_user.id or expense.get("payer_id") == callback.from_user.id or is_member) and not is_settled)
 
     exp_shares = expense.get("shares")
     if not exp_shares:
@@ -460,12 +462,14 @@ async def handle_start_edit_expense_amount(callback: CallbackQuery, state: FSMCo
         await callback.answer("⚠️ این هزینه قبلاً تسویه شده و قابل ویرایش نیست عزیز دلم!", show_alert=True)
         return
         
+    members = await db.get_group_members(group_id)
     is_authorized = (
         callback.from_user.id == group["created_by"] or 
-        expense.get("payer_id") == callback.from_user.id
+        expense.get("payer_id") == callback.from_user.id or
+        any(m["id"] == callback.from_user.id for m in members)
     )
     if not is_authorized:
-        await callback.answer("⚠️ فقط ثبت‌کننده این هزینه یا سرگروه مجاز به ویرایش مبلغ هستند جان دلم!", show_alert=True)
+        await callback.answer("⚠️ فقط اعضای این گروه مجاز به ویرایش مبلغ هستند جان دلم!", show_alert=True)
         return
 
     await state.clear()
@@ -506,15 +510,15 @@ async def handle_start_edit_expense_shares(callback: CallbackQuery, state: FSMCo
         await callback.answer("⚠️ این هزینه قبلاً تسویه شده و قابل ویرایش نیست عزیز دلم!", show_alert=True)
         return
 
+    members = await db.get_group_members(group_id)
     is_authorized = (
         callback.from_user.id == group["created_by"] or 
-        expense.get("payer_id") == callback.from_user.id
+        expense.get("payer_id") == callback.from_user.id or
+        any(m["id"] == callback.from_user.id for m in members)
     )
     if not is_authorized:
-        await callback.answer("⚠️ فقط ثبت‌کننده این هزینه یا سرگروه مجاز به ویرایش افراد سهیم هستند جان دلم!", show_alert=True)
+        await callback.answer("⚠️ فقط اعضای این گروه مجاز به ویرایش افراد سهیم هستند جان دلم!", show_alert=True)
         return
-
-    members = await db.get_group_members(group_id)
     current_shares = expense.get("shares", [])
     selected_uids = [s["user_id"] for s in current_shares]
     if not selected_uids:
@@ -607,6 +611,85 @@ async def handle_done_edit_expense_share(callback: CallbackQuery, state: FSMCont
     await handle_view_single_expense(callback, state=None)
 
 
+@router.callback_query(F.data.startswith("exp:edit_pyr:"))
+async def handle_start_edit_expense_payer(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    exp_id = int(parts[2])
+    group_id = int(parts[3])
+
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    expense = await db.get_expense_by_id(exp_id, group_id)
+    if not expense:
+        await callback.answer("هزینه یافت نشد عزیز دلم!", show_alert=True)
+        return
+
+    if expense.get("settled"):
+        await callback.answer("⚠️ این هزینه قبلاً تسویه شده و قابل ویرایش نیست عزیز دلم!", show_alert=True)
+        return
+
+    members = await db.get_group_members(group_id)
+    member_ids = {m["id"] for m in members}
+    is_authorized = (
+        callback.from_user.id == group["created_by"] or 
+        expense.get("payer_id") == callback.from_user.id or
+        callback.from_user.id in member_ids
+    )
+    if not is_authorized:
+        await callback.answer("⚠️ فقط اعضای این گروه مجاز به ویرایش این هزینه هستند جان دلم!", show_alert=True)
+        return
+
+    await state.clear()
+    calling_name = await db.get_user_calling_name(callback.from_user.id) or "جان دلم"
+    current_payer_name = expense.get('payer_name', 'نامشخص')
+    text = (
+        f"💳 <b>ویرایش پرداخت‌کننده هزینه «{safe(expense['title'])}»</b> 🌸\n\n"
+        f"💰 مبلغ کل هزینه: <b>{format_amount(expense['amount'])}</b>\n"
+        f"👤 پرداخت‌کننده فعلی: <b>{safe(current_payer_name)}</b>\n\n"
+        f"{safe(calling_name)} قشنگم، لطفاً پرداخت‌کننده واقعی این هزینه رو از لیست زیر انتخاب کن:"
+    )
+    markup = kb.expense_edit_payer_keyboard(exp_id, group_id, members, expense.get("payer_id", 0))
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("exp:set_pyr:"))
+async def handle_set_expense_payer(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    exp_id = int(parts[2])
+    group_id = int(parts[3])
+    new_payer_id = int(parts[4])
+
+    group = await db.get_group_by_id(group_id)
+    if not group:
+        await callback.answer("گروه یافت نشد!", show_alert=True)
+        return
+
+    expense = await db.get_expense_by_id(exp_id, group_id)
+    if not expense:
+        await callback.answer("هزینه یافت نشد عزیز دلم!", show_alert=True)
+        return
+
+    if expense.get("settled"):
+        await callback.answer("⚠️ این هزینه قبلاً تسویه شده و قابل ویرایش نیست عزیز دلم!", show_alert=True)
+        return
+
+    if expense.get("payer_id") == new_payer_id:
+        await callback.answer("این شخص هم‌اکنون به عنوان پرداخت‌کننده ثبت است عزیز دلم!", show_alert=True)
+        return
+
+    success, err = await db.update_expense_payer(exp_id, group_id, new_payer_id)
+    if not success:
+        await callback.answer(err or "خطا در ویرایش پرداخت‌کننده!", show_alert=True)
+        return
+
+    await callback.answer("✅ پرداخت‌کننده هزینه با موفقیت تغییر کرد و دنگ‌ها مجدداً محاسبه شدند! 🌸", show_alert=True)
+    await handle_view_single_expense(callback, state=None)
+
+
 @router.message(ExpenseEditStates.waiting_for_new_amount)
 async def handle_expense_new_amount_input(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -660,7 +743,9 @@ async def handle_expense_new_amount_input(message: Message, state: FSMContext):
     expense = await db.get_expense_by_id(exp_id, group_id)
     group = await db.get_group_by_id(group_id)
     is_settled = bool(expense.get("settled")) if expense else False
-    can_edit = bool(group and (group["created_by"] == user_id or (expense and expense.get("payer_id") == user_id)) and not is_settled)
+    members = await db.get_group_members(group_id)
+    is_member = any(m["id"] == user_id for m in members)
+    can_edit = bool(group and (group["created_by"] == user_id or (expense and expense.get("payer_id") == user_id) or is_member) and not is_settled)
     
     status = "تسویه شده ✅" if is_settled else "فعال در دوره جاری ⏳"
     payer_name = expense.get('payer_name', 'نامشخص') if expense else 'نامشخص'

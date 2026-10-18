@@ -476,18 +476,46 @@ def expense_history_keyboard(expenses: list[dict], group_id: int) -> InlineKeybo
 
 
 def single_expense_keyboard(expense_id: int, group_id: int, can_edit: bool = False) -> InlineKeyboardMarkup:
-    """مشاهده جزئیات، ویرایش مبلغ، ویرایش افراد سهیم یا حذف یک هزینه"""
+    """مشاهده جزئیات، ویرایش مبلغ، افراد سهیم، پرداخت‌کننده یا حذف یک هزینه"""
     keyboard = []
     if can_edit:
         keyboard.append([
-            InlineKeyboardButton(text="✏️ ویرایش مبلغ هزینه", callback_data=f"exp:edit_amt:{expense_id}:{group_id}"),
-            InlineKeyboardButton(text="👥 ویرایش افراد سهیم در دنگ", callback_data=f"exp:edit_sh:{expense_id}:{group_id}")
+            InlineKeyboardButton(text="✏️ ویرایش مبلغ", callback_data=f"exp:edit_amt:{expense_id}:{group_id}"),
+            InlineKeyboardButton(text="👥 افراد سهیم در دنگ", callback_data=f"exp:edit_sh:{expense_id}:{group_id}")
+        ])
+        keyboard.append([
+            InlineKeyboardButton(text="💳 ویرایش پرداخت‌کننده", callback_data=f"exp:edit_pyr:{expense_id}:{group_id}")
         ])
     keyboard.append([
         InlineKeyboardButton(text="🗑️ حذف این هزینه", callback_data=f"exp:del:{expense_id}:{group_id}")
     ])
     keyboard.append([
         InlineKeyboardButton(text="🔙 بازگشت به تاریخچه", callback_data=f"grp:history:{group_id}")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def expense_edit_payer_keyboard(
+    expense_id: int,
+    group_id: int,
+    members: list[dict],
+    current_payer_id: int
+) -> InlineKeyboardMarkup:
+    """کیبورد انتخاب پرداخت‌کننده جدید برای هزینه ثبت‌شده"""
+    keyboard = []
+    for m in members:
+        is_current = (m["id"] == current_payer_id)
+        icon = "🔘" if is_current else "⚪"
+        name_label = m.get("display_name", m.get("nickname", m["full_name"]))
+        badge = " (فعلی)" if is_current else ""
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{icon} {name_label}{badge}",
+                callback_data=f"exp:set_pyr:{expense_id}:{group_id}:{m['id']}"
+            )
+        ])
+    keyboard.append([
+        InlineKeyboardButton(text="❌ انصراف و بازگشت", callback_data=f"exp:view:{expense_id}:{group_id}")
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 

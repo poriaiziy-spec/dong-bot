@@ -1432,6 +1432,12 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                 <input type="number" id="editExpAmountInput" class="form-control" placeholder="مبلغ به تومان">
             </div>
 
+            <div class="form-group" style="margin-bottom:14px;">
+                <label style="font-size:0.78rem; color:var(--text-sub); margin-bottom:4px; display:block;">💳 پرداخت‌کننده (کی حساب کرده؟):</label>
+                <select id="editExpPayerSelect" class="form-control" style="background:var(--bg-inner); color:var(--text-main); font-weight:700;">
+                </select>
+            </div>
+
             <div style="background:var(--bg-inner); border:1px solid var(--border-glass); border-radius:var(--radius-md); padding:10px 14px; margin-bottom:16px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                     <span style="font-size:0.84rem; font-weight:700; color:var(--gold-primary);">👥 افراد سهیم در دنگ:</span>
@@ -2872,6 +2878,15 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             document.getElementById('editExpTitleDisplay').innerText = exp.title;
             document.getElementById('editExpAmountInput').value = exp.amount;
 
+            // تنظیم لیست پرداخت‌کننده‌ها
+            let pyrHtml = '';
+            (group.members || []).forEach(m => {
+                const isCurrentPayer = (m.id === exp.payer_id);
+                const mName = m.display_name || m.nickname || m.calling_name || m.full_name || 'عضو';
+                pyrHtml += `<option value="${m.id}" ${isCurrentPayer ? 'selected' : ''}>${mName}${isCurrentPayer ? ' (پرداخت‌کننده فعلی)' : ''}</option>`;
+            });
+            document.getElementById('editExpPayerSelect').innerHTML = pyrHtml;
+
             const shareUids = new Set((exp.shares || []).map(s => s.user_id));
             let mHtml = '';
             (group.members || []).forEach(m => {
@@ -2903,6 +2918,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
             const expId = parseInt(document.getElementById('editExpId').value);
             const groupId = parseInt(document.getElementById('editExpGroupId').value);
             const amount = parseInt(document.getElementById('editExpAmountInput').value) || 0;
+            const payerId = parseInt(document.getElementById('editExpPayerSelect').value) || null;
             const checked = Array.from(document.querySelectorAll('.edit-exp-member-cb:checked'));
 
             if (amount <= 0) {
@@ -2924,6 +2940,7 @@ MINI_APP_HTML = r"""<!DOCTYPE html>
                         expense_id: expId,
                         group_id: groupId,
                         amount: amount,
+                        payer_id: payerId,
                         participant_ids: participantIds
                     })
                 });
@@ -3446,18 +3463,25 @@ async def api_notify_shopping_purchase_handler(request: web.Request) -> web.Resp
 
 
 async def api_edit_expense_handler(request: web.Request) -> web.Response:
-    """ویرایش مبلغ و افراد سهیم در هزینه از طریق مینی‌اپ"""
+    """ویرایش مبلغ، افراد سهیم و پرداخت‌کننده در هزینه از طریق مینی‌اپ"""
     try:
         body = await request.json()
         expense_id = int(body["expense_id"])
         group_id = int(body["group_id"])
         amount = int(body.get("amount", 0)) if body.get("amount") else None
+        payer_id = int(body["payer_id"]) if body.get("payer_id") else None
         participant_ids = [int(x) for x in body.get("participant_ids", []) if str(x).isdigit()]
 
         if not participant_ids:
             return web.json_response({"success": False, "error": "حداقل یک نفر باید در دنگ سهیم باشد"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
 
-        success, err = await db.update_expense_participants(expense_id, group_id, participant_ids, new_amount=amount)
+        success, err = await db.update_expense_participants(
+            expense_id, 
+            group_id, 
+            participant_ids, 
+            new_amount=amount, 
+            new_payer_id=payer_id
+        )
         if not success:
             return web.json_response({"success": False, "error": err or "خطا در ویرایش هزینه"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
 

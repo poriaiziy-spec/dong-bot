@@ -180,6 +180,15 @@ async def test_full_pipeline():
     assert stats_edit[101]["net"] == 325000
     print("✅ تست ویرایش مبلغ هزینه و محاسبه مجدد ترازها و سهم‌ها با موفقیت پاس شد.")
 
+    # تست ویرایش پرداخت‌کننده هزینه
+    success_pyr, _ = await db.update_expense_payer(exp1, group_id, 102)
+    assert success_pyr is True
+    exp1_data = await db.get_expense_by_id(exp1, group_id)
+    assert exp1_data["payer_id"] == 102
+    # برگرداندن پرداخت‌کننده به 101
+    await db.update_expense_payer(exp1, group_id, 101)
+    print("✅ تست ویرایش پرداخت‌کننده هزینه با موفقیت پاس شد.")
+
     # برگرداندن به ۳۰۰ هزار جهت تطابق با بقیه مراحل تست
     await db.update_expense_amount(exp1, group_id, 300000)
 

@@ -578,9 +578,12 @@ async def get_expense_by_id(expense_id: int, group_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
-            SELECT e.*, u.full_name AS payer_name, u.username AS payer_username
+            SELECT e.*, 
+                   COALESCE(gm.nickname, u.calling_name, u.full_name) AS payer_name, 
+                   u.username AS payer_username
             FROM expenses e
             JOIN users u ON e.payer_id = u.id
+            LEFT JOIN group_members gm ON gm.group_id = e.group_id AND gm.user_id = u.id
             WHERE e.id = ? AND e.group_id = ?
         """, (expense_id, group_id)) as cursor:
             row = await cursor.fetchone()
@@ -683,14 +686,41 @@ async def update_expense_shares(expense_id: int, group_id: int, new_shares: dict
         return True, None
 
 
+async def update_expense_payer(expense_id: int, group_id: int, new_payer_id: int) -> tuple[bool, str | None]:
+    """
+    ویرایش پرداخت‌کننده یک هزینه ثبت‌شده
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # بررسی وجود هزینه و عدم تسویه
+        async with db.execute("SELECT id, settled FROM expenses WHERE id = ? AND group_id = ?", (expense_id, group_id)) as cursor:
+            exp_row = await cursor.fetchone()
+            if not exp_row:
+                return False, "هزینه یافت نشد."
+            if exp_row["settled"]:
+                return False, "این هزینه قبلاً تسویه شده و قابل ویرایش نیست."
+
+        # بررسی عضویت پرداخت‌کننده جدید در گروه
+        async with db.execute("SELECT user_id FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, new_payer_id)) as cursor:
+            member_row = await cursor.fetchone()
+            if not member_row:
+                return False, "کاربر انتخاب‌شده عضو این گروه نیست."
+
+        await db.execute("UPDATE expenses SET payer_id = ? WHERE id = ? AND group_id = ?", (new_payer_id, expense_id, group_id))
+        await db.commit()
+        schedule_cloud_backup()
+        return True, None
+
+
 async def update_expense_participants(
     expense_id: int, 
     group_id: int, 
     participant_ids: list[int], 
-    new_amount: int | None = None
+    new_amount: int | None = None,
+    new_payer_id: int | None = None
 ) -> tuple[bool, str | None]:
     """
-    تغییر افراد سهیم در یک هزینه و تقسیم مجدد مبلغ بین آن‌ها به صورت مساوی
+    تغییر افراد سهیم، مبلغ و پرداخت‌کننده در یک هزینه و تقسیم مجدد مبلغ بین آن‌ها به صورت مساوی
     """
     if not participant_ids:
         return False, "حداقل باید یک نفر در دنگ سهیم باشد."
@@ -707,8 +737,15 @@ async def update_expense_participants(
             current_amount = exp_row["amount"]
 
         amount = new_amount if (new_amount and new_amount > 0) else current_amount
-        if new_amount and new_amount > 0 and new_amount != current_amount:
-            await db.execute("UPDATE expenses SET amount = ? WHERE id = ? AND group_id = ?", (new_amount, expense_id, group_id))
+        
+        # به‌روزرسانی پرداخت‌کننده و مبلغ در صورت تغییر
+        if new_payer_id:
+            async with db.execute("SELECT user_id FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, new_payer_id)) as cursor:
+                if not await cursor.fetchone():
+                    return False, "کاربر پرداخت‌کننده عضو گروه نیست."
+            await db.execute("UPDATE expenses SET amount = ?, payer_id = ? WHERE id = ? AND group_id = ?", (amount, new_payer_id, expense_id, group_id))
+        elif new_amount and new_amount > 0 and new_amount != current_amount:
+            await db.execute("UPDATE expenses SET amount = ? WHERE id = ? AND group_id = ?", (amount, expense_id, group_id))
 
         count = len(participant_ids)
         base_share = amount // count
