@@ -23,6 +23,43 @@ _last_response_time_ms = 0
 _last_check_time = None
 
 
+def get_iran_time() -> datetime.datetime:
+    """دریافت زمان رسمی ایران (UTC+3:30)"""
+    tz_iran = datetime.timezone(datetime.timedelta(hours=3, minutes=30))
+    return datetime.datetime.now(tz_iran)
+
+
+def is_night_sleep_hours() -> bool:
+    """
+    ساعات خواب شبانه جهت صرفه‌جویی سهمیه رندر:
+    از ساعت ۰۱:۳۰ بامداد تا ۰۸:۰۰ صبح (به وقت ایران)
+    """
+    now_iran = get_iran_time()
+    minutes = now_iran.hour * 60 + now_iran.minute
+    # 01:30 = 90 min, 08:00 = 480 min
+    return 90 <= minutes < 480
+
+
+async def is_eco_mode_enabled() -> bool:
+    """بررسی فعال بودن حالت بهینه صرفه‌جویی سهمیه هاست (پیش‌فرض: فعال)"""
+    try:
+        val = await db.get_bot_setting("eco_mode_enabled", "1")
+        return val == "1"
+    except Exception:
+        return True
+
+
+async def toggle_eco_mode() -> bool:
+    """تغییر وضعیت فعال/غیرفعال حالت بهینه‌سازی شبانه"""
+    try:
+        current = await is_eco_mode_enabled()
+        new_val = "0" if current else "1"
+        await db.set_bot_setting("eco_mode_enabled", new_val)
+        return new_val == "1"
+    except Exception:
+        return True
+
+
 def get_current_month_key() -> str:
     """دریافت کلید ماه جاری میلادی (مثلاً: 2026-10)"""
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
@@ -86,6 +123,7 @@ async def get_server_status_data() -> dict:
     """جمع‌آوری کامل داده‌های سلامت سرور، مصرف ساعات هاست و دیتابیس"""
     month_key = get_current_month_key()
     now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_iran = get_iran_time()
     
     # آمار دیتابیس از زمان فعالیت واقعی سرور
     stats = await db.get_server_uptime_stats(month_key)
@@ -115,9 +153,13 @@ async def get_server_status_data() -> dict:
     except Exception:
         pass
 
+    eco_on = await is_eco_mode_enabled()
+    in_night = is_night_sleep_hours()
+
     return {
         "month_key": month_key,
         "month_name": now_utc.strftime("%B %Y"),
+        "iran_time_str": now_iran.strftime("%H:%M"),
         "active_hours": effective_hours,
         "total_free_hours": TOTAL_FREE_HOURS,
         "percent_used": percent_used,
@@ -130,7 +172,9 @@ async def get_server_status_data() -> dict:
         "last_check_time": _last_check_time,
         "db_counts": db_counts,
         "cloud_backup_status": _last_backup_status,
-        "web_app_url": WEB_APP_URL
+        "web_app_url": WEB_APP_URL,
+        "eco_enabled": eco_on,
+        "is_night": in_night
     }
 
 
@@ -147,31 +191,46 @@ def format_server_status_text(data: dict) -> str:
     elif percent >= 50:
         usage_badge = "🟡 متوسط (بیش از ۵۰٪)"
     else:
-        usage_badge = "🟢 عادی و امن"
+        usage_badge = "🟢 کاملاً عادی و امن"
 
     cloud_status_text = "ثبت شده و امن ✅" if data["cloud_backup_status"] else "در حال همگام‌سازی ⏳"
 
+    eco_on = data.get("eco_enabled", True)
+    is_night = data.get("is_night", False)
+    if eco_on:
+        if is_night:
+            eco_status_str = "🌙 خواب شبانه فعال است (در حال ذخیره سهمیه هاست)"
+        else:
+            eco_status_str = "🌱 فعال ✅ (بیداری روزانه + خواب از ۰۱:۳۰ تا ۰۸:۰۰)"
+    else:
+        eco_status_str = "⚪ غیرفعال (روشن مداوم ۲۴/۷ بدون خواب)"
+
     text = (
-        "📊 <b>گزارش پایش وضعیت سرور و سهمیه رایگان رندر:</b> ☕\n\n"
-        f"🤖 <b>وضعیت بات تلگرام:</b> ۲۴/۷ آنلاین و فعال ✅\n"
+        "📊 <b>گزارش پایش وضعیت سرور و سهمیه هاست رندر:</b> ☕\n\n"
+        f"🤖 <b>وضعیت ربات تلگرام:</b> فعال و آنلاین ✅\n"
         f"🌐 <b>وضعیت سرور وب:</b> {data['web_status']}\n"
         f"⚡ <b>سرعت پاسخگویی:</b> <code>{data['response_time_ms']} ms</code>\n"
-        f"🔗 <b>آدرس وب‌اپ:</b> <code>{data['web_app_url']}</code>\n\n"
+        f"🔗 <b>آدرس وب‌اپ:</b> <code>{data['web_app_url']}</code>\n"
+        f"🕒 <b>ساعت رسمی ایران:</b> <code>{data.get('iran_time_str', '')}</code>\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        f"⏱️ <b>سهمیه هاست رایگان ماه ({data['month_name']}):</b>\n"
+        f"⏱️ <b>سهمیه هاست رایگان ({data['month_name']}):</b>\n"
         f"• وضعیت مصرف: <b>{usage_badge}</b>\n"
         f"• ساعات مصرف‌شده: <b>{data['active_hours']:.1f}</b> از {int(data['total_free_hours'])} ساعت\n"
         f"• درصد مصرف سهمیه: <b>{percent:.1f}٪</b>\n"
-        f"• زمان باقی‌مانده: <b>{data['remaining_hours']:.1f} ساعت</b> (~<b>{data['remaining_days']:.1f} روز</b>)\n"
-        f"• پیشرفت: <code>[{prog_bar}] {percent:.1f}%</code>\n\n"
+        f"• سهمیه باقی‌مانده: <b>{data['remaining_hours']:.1f} ساعت</b> (~<b>{data['remaining_days']:.1f} روز</b>)\n"
+        f"• نوار پیشرفت: <code>[{prog_bar}] {percent:.1f}%</code>\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔋 <b>حالت بهینه‌سازی مصرف سهمیه (Eco Mode):</b>\n"
+        f"• وضعیت: <b>{eco_status_str}</b>\n"
+        "• ذخیره ماهانه در این حالت: <b>حدود ۲۰۰ ساعت سهمیه اضافه!</b>\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "💾 <b>وضعیت دیتابیس و داده‌ها:</b>\n"
         f"• دورهمی‌های فعال: <b>{data['db_counts'].get('groups', 0)}</b>\n"
-        f"• کل کاربران ثبت‌شده: <b>{data['db_counts'].get('users', 0)}</b>\n"
-        f"• کل هزینه‌های ثبت‌شده: <b>{data['db_counts'].get('expenses', 0)}</b>\n"
+        f"• کل کاربران: <b>{data['db_counts'].get('users', 0)}</b>\n"
+        f"• هزینه‌های ثبت‌شده: <b>{data['db_counts'].get('expenses', 0)}</b>\n"
         f"• اقلام لیست خرید: <b>{data['db_counts'].get('shopping_items', 0)}</b>\n"
-        f"• پشتیبان‌گیری ابری کلاد: <b>{cloud_status_text}</b>\n\n"
-        f"<i>🕒 آخرین بررسی: {data['last_check_time'] or 'هم‌اکنون'}</i>"
+        f"• پشتیبان‌گیری کلاد: <b>{cloud_status_text}</b>\n\n"
+        f"<i>🕒 آخرین به‌روزرسانی: {data['last_check_time'] or 'هم‌اکنون'}</i>"
     )
     return text
 

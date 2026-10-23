@@ -129,16 +129,31 @@ async def start_health_check_server():
     return runner
 
 async def start_keep_alive_task():
-    """ارسال منظم پینگ دوره‌ای هر ۴ دقیقه به آدرس عمومی جهت جلوگیری از خوابیدن سرور رندر"""
-    service_url = os.getenv("RENDER_EXTERNAL_URL") or "https://dong-bot-1.onrender.com"
+    """
+    پایش هوشمند و بهینه زنده نگه‌داشتن سرور رندر:
+    - در ساعات روز (۰۸:۰۰ تا ۰۱:۳۰): پینگ منظم هر ۸ دقیقه برای بیداری کامل و پاسخگویی آنی مینی‌اپ
+    - در ساعات شبانه (۰۱:۳۰ تا ۰۸:۰۰): در صورت فعال بودن حالت اکو، پینگ متوقف می‌شود تا رندر بخوابد و ساعات هاست رایگان ذخیره شود!
+    """
+    from server_monitor import is_eco_mode_enabled, is_night_sleep_hours, get_iran_time
+    service_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("WEB_APP_URL") or "https://dong-bot-1.onrender.com"
     health_url = f"{service_url.rstrip('/')}/health"
     
     # تاخیر اولیه ۲۰ ثانیه‌ای برای اطمینان از استارت کامل سرور وب
     await asyncio.sleep(20)
-    logger.info(f"🔄 تسک زنده نگه‌داشتن خودکار ۲۴ ساعته فعال شد (هدف: {health_url})")
+    logger.info(f"🔄 تسک زنده نگه‌داشتن بهینه سرور فعال شد (هدف: {health_url})")
     
     while True:
         try:
+            eco_on = await is_eco_mode_enabled()
+            in_night = is_night_sleep_hours()
+            
+            if eco_on and in_night:
+                iran_now = get_iran_time().strftime("%H:%M")
+                logger.info(f"🌙 حالت خواب شبانه فعال است ({iran_now}). پینگ متوقف شده تا سهمیه هاست رایگان رندر ذخیره گردد.")
+                # در ساعات شب هر ۱۰ دقیقه بررسی می‌کنیم تا به محض فرارسیدن ساعت ۸ پینگ‌ها از سر گرفته شوند
+                await asyncio.sleep(600)
+                continue
+
             async with aiohttp.ClientSession() as session:
                 async with session.get(health_url, timeout=aiohttp.ClientTimeout(total=25)) as resp:
                     if resp.status == 200:
@@ -146,8 +161,8 @@ async def start_keep_alive_task():
         except Exception as e:
             logger.debug(f"Keep-alive ping notice: {e}")
         
-        # ارسال پینگ هر ۲۵ ثانیه برای زنده نگه‌داشتن دائمی سرور
-        await asyncio.sleep(25)
+        # پینگ بهینه هر ۸ دقیقه (۴۸۰ ثانیه) - کاملاً کافی برای جلوگیری از خوابیدن رندر در ساعات بیداری
+        await asyncio.sleep(480)
 
 async def set_bot_commands(bot: Bot):
     """تنظیم منوی دستورات ربات در تلگرام"""

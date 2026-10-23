@@ -396,6 +396,7 @@ async def handle_server_status_command(message: Message):
     text = format_server_status_text(data)
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 به‌روزرسانی وضعیت", callback_data="admin:server:refresh")],
+        [InlineKeyboardButton(text="🔋 تغییر وضعیت خواب شبانه (Eco)", callback_data="admin:server:toggle_eco")],
         [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="nav:main")]
     ])
     await message.answer(text, parse_mode="HTML", reply_markup=markup)
@@ -414,6 +415,32 @@ async def handle_server_status_refresh(callback: CallbackQuery):
     text = format_server_status_text(data)
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 به‌روزرسانی وضعیت", callback_data="admin:server:refresh")],
+        [InlineKeyboardButton(text="🔋 تغییر وضعیت خواب شبانه (Eco)", callback_data="admin:server:toggle_eco")],
+        [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="nav:main")]
+    ])
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "admin:server:toggle_eco")
+async def handle_server_status_toggle_eco(callback: CallbackQuery):
+    """تغییر وضعیت فعال/غیرفعال بودن حالت صرفه‌جویی سهمیه شبانه"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔ دسترسی غیرمجاز!", show_alert=True)
+        return
+
+    from server_monitor import toggle_eco_mode, get_server_status_data, format_server_status_text
+    new_state = await toggle_eco_mode()
+    state_msg = "فعال شد (خواب از ۰۱:۳۰ تا ۰۸:۰۰)" if new_state else "غیرفعال شد (روشن ۲۴ ساعته)"
+    await callback.answer(f"🌱 حالت اکو {state_msg}!", show_alert=True)
+    
+    data = await get_server_status_data()
+    text = format_server_status_text(data)
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 به‌روزرسانی وضعیت", callback_data="admin:server:refresh")],
+        [InlineKeyboardButton(text="🔋 تغییر وضعیت خواب شبانه (Eco)", callback_data="admin:server:toggle_eco")],
         [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="nav:main")]
     ])
     try:

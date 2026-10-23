@@ -194,6 +194,14 @@ async def init_db():
             )
         """)
 
+        # جدول تنظیمات سیستم و حالت‌های بهینه‌سازی
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS bot_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+
         await db.commit()
     
     # بازیابی خودکار داده‌ها در سرورهای ابری
@@ -1325,5 +1333,23 @@ async def get_server_uptime_stats(month_key: str) -> dict:
                 "last_warning_level": 0,
                 "updated_at": None
             }
+
+
+async def get_bot_setting(key: str, default: str = "") -> str:
+    """دریافت یک مقدار تنظیمات از دیتابیس"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT value FROM bot_settings WHERE key = ?", (key,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else default
+
+
+async def set_bot_setting(key: str, value: str):
+    """ذخیره یا به‌روزرسانی یک مقدار تنظیمات در دیتابیس"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO bot_settings (key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = ?
+        """, (key, value, value))
+        await db.commit()
 
 
