@@ -332,6 +332,24 @@ async def test_full_pipeline():
     assert isinstance(sampled_name, str) and len(sampled_name) > 0
     print(f"✅ تست صحت، تنوع و شمارش کلمات اسامی رندوم گروه ({len(FUNNY_GROUP_NAMES)} اسم از ۲ تا ۵ کلمه‌ای بدون تکرار) پاس شد.")
 
+    # تست سیستم پایش سلامت سرور و ثبت ساعات مصرف هاست
+    from server_monitor import get_current_month_key, get_server_status_data, format_server_status_text, make_progress_bar
+    m_key = get_current_month_key()
+    hrs, warn = await db.record_server_uptime_minute(m_key, seconds=3600)
+    assert hrs >= 1.0
+    await db.update_server_warning_level(m_key, 70)
+    stats_m = await db.get_server_uptime_stats(m_key)
+    assert stats_m["last_warning_level"] == 70
+    assert stats_m["active_hours"] >= 1.0
+
+    status_data = await get_server_status_data()
+    assert "percent_used" in status_data
+    assert "remaining_hours" in status_data
+    formatted_msg = format_server_status_text(status_data)
+    assert "ساعات مصرف‌شده" in formatted_msg
+    assert len(make_progress_bar(50)) == 10
+    print("✅ تست سیستم پایش سلامت سرور، مصرف ساعات رایگان و هشدارها با موفقیت پاس شد.")
+
     if os.path.exists("test_dong.db"):
         os.remove("test_dong.db")
     print("\n🎉 تمامی تست‌های عملکردی سیستم با موفقیت ۱۰۰٪ پاس شدند!")

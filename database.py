@@ -183,6 +183,17 @@ async def init_db():
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_custom_foods_group ON custom_foods(group_id);")
 
+        # جدول پایش زمان فعالیت سرور و مصرف ساعات هاست
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS server_monitor_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                month_key TEXT NOT NULL UNIQUE,
+                active_seconds INTEGER DEFAULT 0,
+                last_warning_level INTEGER DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         await db.commit()
     
     # بازیابی خودکار داده‌ها در سرورهای ابری
@@ -1265,5 +1276,54 @@ async def delete_custom_food(food_id: int) -> bool:
         await db.commit()
         schedule_cloud_backup()
         return cursor.rowcount > 0
+
+
+async def record_server_uptime_minute(month_key: str, seconds: int = 60) -> tuple[float, int]:
+    """
+    ثبت زمان فعالیت سرور در ماه جاری و بازگرداندن (ساعات فعال، آخرین سطح هشدار)
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO server_monitor_logs (month_key, active_seconds, last_warning_level, updated_at)
+            VALUES (?, ?, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(month_key) DO UPDATE SET 
+                active_seconds = active_seconds + ?,
+                updated_at = CURRENT_TIMESTAMP
+        """, (month_key, seconds, seconds))
+        await db.commit()
+        
+        async with db.execute("SELECT active_seconds, last_warning_level FROM server_monitor_logs WHERE month_key = ?", (month_key,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                active_hours = row[0] / 3600.0
+                return active_hours, row[1]
+            return 0.0, 0
+
+
+async def update_server_warning_level(month_key: str, level: int):
+    """به‌روزرسانی آخرین سطح هشدار مصرف ساعات هاست برای ماه جاری"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE server_monitor_logs SET last_warning_level = ?, updated_at = CURRENT_TIMESTAMP WHERE month_key = ?", (level, month_key))
+        await db.commit()
+
+
+async def get_server_uptime_stats(month_key: str) -> dict:
+    """دریافت آمار ساعات فعالیت سرور در ماه جاری"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT active_seconds, last_warning_level, updated_at FROM server_monitor_logs WHERE month_key = ?", (month_key,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return {
+                    "active_seconds": row[0],
+                    "active_hours": row[0] / 3600.0,
+                    "last_warning_level": row[1],
+                    "updated_at": row[2]
+                }
+            return {
+                "active_seconds": 0,
+                "active_hours": 0.0,
+                "last_warning_level": 0,
+                "updated_at": None
+            }
 
 

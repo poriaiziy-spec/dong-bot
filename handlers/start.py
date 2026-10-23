@@ -382,3 +382,42 @@ async def handle_reset_execute(callback: CallbackQuery, state: FSMContext):
         "ربات به حالت اولیه و صفر بازگشت."
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.main_menu_keyboard())
+
+
+@router.message(Command("server", "status"))
+async def handle_server_status_command(message: Message):
+    """مشاهده وضعیت سلامت سرور و ساعات هاست رایگان رندر (مخصوص ادمین)"""
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("⛔ این دستور مخصوص مدیریت سیستم است.")
+        return
+
+    from server_monitor import get_server_status_data, format_server_status_text
+    data = await get_server_status_data()
+    text = format_server_status_text(data)
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 به‌روزرسانی وضعیت", callback_data="admin:server:refresh")],
+        [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="nav:main")]
+    ])
+    await message.answer(text, parse_mode="HTML", reply_markup=markup)
+
+
+@router.callback_query(F.data == "admin:server:refresh")
+async def handle_server_status_refresh(callback: CallbackQuery):
+    """به‌روزرسانی آنی وضعیت سرور"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔ دسترسی غیرمجاز!", show_alert=True)
+        return
+
+    from server_monitor import get_server_status_data, format_server_status_text
+    await callback.answer("🔄 در حال دریافت آخرین وضعیت...", show_alert=False)
+    data = await get_server_status_data()
+    text = format_server_status_text(data)
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 به‌روزرسانی وضعیت", callback_data="admin:server:refresh")],
+        [InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="nav:main")]
+    ])
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+    except Exception:
+        pass
+

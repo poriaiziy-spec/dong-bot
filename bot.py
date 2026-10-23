@@ -159,6 +159,7 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="newgroup", description="➕ ساخت گروه دنگ جدید"),
         BotCommand(command="cancel", description="❌ لغو عملیات جاری"),
         BotCommand(command="help", description="💡 راهنمای کار با ربات"),
+        BotCommand(command="server", description="📊 وضعیت سرور و ساعات رایگان"),
         BotCommand(command="reset_all_data", description="🧹 ریست و پاکسازی کامل دیتابیس"),
     ]
     await bot.set_my_commands(commands)
@@ -235,6 +236,9 @@ async def main():
     periodic_sync_task = asyncio.create_task(start_periodic_cloud_backup(300))
     # راه‌اندازی تسک زنده نگه‌داشتن سرور رندر هر ۴ دقیقه (Keep-Alive ضد خوابیدن سرور)
     keep_alive_task = asyncio.create_task(start_keep_alive_task())
+    # راه‌اندازی تسک هوشمند پایش سلامت سرور و هشدار سهمیه ساعات رایگان رندر
+    from server_monitor import start_server_monitor_task
+    server_monitor_task = asyncio.create_task(start_server_monitor_task(bot))
 
     try:
         # عدم حذف پیام‌های دریافتی تا پیام‌های ارسالی کاربر هنگام خواب موقت پردازش شوند
@@ -246,6 +250,7 @@ async def main():
             await backup_to_cloud()
         except Exception as e:
             logger.error(f"خطا در بکاپ نهایی: {e}")
+        server_monitor_task.cancel()
         keep_alive_task.cancel()
         periodic_sync_task.cancel()
         scheduler_task.cancel()

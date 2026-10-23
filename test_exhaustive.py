@@ -525,7 +525,8 @@ async def test_all_scenarios():
             InlineKeyboardButton(text="ویرایش متنی لیست", callback_data=f"shop:ed_bulk:{BIG_GRP}"),
             InlineKeyboardButton(text="ویرایش افراد سهیم", callback_data=f"exp:edit_sh:{BIG_EXP}:{BIG_GRP}"),
             InlineKeyboardButton(text="ویرایش پرداخت‌کننده", callback_data=f"exp:edit_pyr:{BIG_EXP}:{BIG_GRP}"),
-            InlineKeyboardButton(text="تنظیم پرداخت‌کننده", callback_data=f"exp:set_pyr:{BIG_EXP}:{BIG_GRP}:{BIG_USER}")
+            InlineKeyboardButton(text="تنظیم پرداخت‌کننده", callback_data=f"exp:set_pyr:{BIG_EXP}:{BIG_GRP}:{BIG_USER}"),
+            InlineKeyboardButton(text="به‌روزرسانی سرور", callback_data="admin:server:refresh")
         ]]),
         quote_dismiss_keyboard()
     ]
